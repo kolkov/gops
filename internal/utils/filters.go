@@ -21,10 +21,10 @@ func ShouldSkipDir(name string) bool {
 }
 
 func ShouldIncludeFile(name string) bool {
-	fileExt := filepath.Ext(name) // Исправлено: переменная переименована
+	fileExt := filepath.Ext(name)
 	includeExtensions := []string{
 		".go", ".ts", ".html", ".scss", ".css",
-		".json", ".yaml", ".yml", ".md",
+		".json", ".yaml", ".yml", ".md", ".mod", ".sum",
 	}
 
 	for _, ext := range includeExtensions {

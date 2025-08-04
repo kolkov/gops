@@ -33,17 +33,17 @@ func NewProjectScanner(rootDir, outputFile string) *ProjectScanner {
 func (s *ProjectScanner) AskContentSettings() {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Println("\nНастройки документации:")
-	fmt.Println("1. Включать файлы стилей (CSS, SCSS)? [y/N]")
+	fmt.Println("\nНастройки документации для ВСЕХ проектов:")
+	fmt.Print("1. Включать файлы стилей (CSS, SCSS)? [y/N]: ")
 	s.IncludeStyles = readYesNo(reader, false)
 
-	fmt.Println("2. Включать файлы разметки (HTML)? [y/N]")
+	fmt.Print("2. Включать файлы разметки (HTML)? [y/N]: ")
 	s.IncludeMarkup = readYesNo(reader, false)
 
-	fmt.Println("3. Включать конфигурационные файлы? [y/N]")
+	fmt.Print("3. Включать конфигурационные файлы? [y/N]: ")
 	s.IncludeConfigs = readYesNo(reader, false)
 
-	fmt.Println("4. Включать тестовые файлы? [y/N]")
+	fmt.Print("4. Включать тестовые файлы? [y/N]: ")
 	s.IncludeTests = readYesNo(reader, false)
 }
 
@@ -151,7 +151,7 @@ func (s *ProjectScanner) processNxProject(
 	docGenerator.WriteProjectHeader(project.Name, project.Type, project.Root)
 
 	projectRoot := filepath.Join(s.rootDir, project.Root)
-	projectBasePath := filepath.Dir(projectRoot)
+	projectBasePath := s.rootDir
 
 	// Нормализация путей для Windows
 	projectRoot = filepath.ToSlash(projectRoot)
