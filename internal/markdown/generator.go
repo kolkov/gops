@@ -113,8 +113,7 @@ func (d *DocumentationGenerator) GenerateNxStructure(projects []utils.NxProject)
 // GenerateProjectTree создает древовидную структуру проекта
 func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) string {
 	var builder strings.Builder
-	projectName := filepath.Base(basePath)
-	builder.WriteString("```\n" + projectName + "\n")
+	builder.WriteString("```\n.\n") // Корень обозначается точкой
 
 	type treeNode struct {
 		path  string
@@ -169,7 +168,10 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 	// Рекурсивная функция для построения дерева
 	var buildTree func(parent string, prefix string)
 	buildTree = func(parent string, prefix string) {
-		children := childrenMap[parent]
+		children, exists := childrenMap[parent]
+		if !exists {
+			return
+		}
 
 		// Разделяем на директории и файлы
 		var dirs []treeNode
@@ -182,12 +184,12 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			}
 		}
 
-		// Сортируем директории и файлы отдельно
+		// Сортируем директории и файлы по имени
 		sort.Slice(dirs, func(i, j int) bool {
-			return dirs[i].path < dirs[j].path
+			return filepath.Base(dirs[i].path) < filepath.Base(dirs[j].path)
 		})
 		sort.Slice(files, func(i, j int) bool {
-			return files[i].path < files[j].path
+			return filepath.Base(files[i].path) < filepath.Base(files[j].path)
 		})
 
 		// Объединяем: сначала директории, потом файлы
