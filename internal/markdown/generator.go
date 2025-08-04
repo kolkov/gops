@@ -218,14 +218,15 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			}
 		}
 
-		// Сортировка по имени файла/директории
+		// Сортировка: сначала директории, потом файлы
 		sort.Slice(dirs, func(i, j int) bool {
-			return filepath.Base(dirs[i].path) < filepath.Base(dirs[j].path)
+			return dirs[i].path < dirs[j].path
 		})
 		sort.Slice(files, func(i, j int) bool {
-			return filepath.Base(files[i].path) < filepath.Base(files[j].path)
+			return files[i].path < files[j].path
 		})
 
+		// Объединяем: сначала все директории, потом все файлы
 		sortedChildren := append(dirs, files...)
 
 		for i, child := range sortedChildren {
@@ -241,7 +242,6 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 
 			if child.isDir {
 				builder.WriteString(name + "/\n")
-				// Рекурсия только для директорий
 				newPrefix := prefix
 				if isLast {
 					newPrefix += "    "
@@ -255,14 +255,22 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 		}
 	}
 
-	// Начинаем с корневой директории
 	buildTree(relRoot, "")
 	builder.WriteString("```\n")
 	return builder.String()
 }
 
 func shouldExcludeFromTree(relPath string, info os.FileInfo) bool {
-	// Пропускаем системные и временные файлы
+	// Проверяем каждый компонент пути
+	parts := strings.Split(relPath, "/")
+	for _, part := range parts {
+		// Пропускаем скрытые файлы/папки (начинающиеся с точки)
+		if strings.HasPrefix(part, ".") && part != "." && part != ".." {
+			return true
+		}
+	}
+
+	// Системные и временные файлы
 	excludePatterns := []string{
 		".git", ".vscode", ".idea", "node_modules", "dist", "build",
 		".angular", ".nx", "coverage", "__pycache__", "bin", "obj",
@@ -273,11 +281,6 @@ func shouldExcludeFromTree(relPath string, info os.FileInfo) bool {
 		if strings.Contains(relPath, pattern) {
 			return true
 		}
-	}
-
-	// Пропускаем скрытые файлы/папки
-	if strings.HasPrefix(filepath.Base(relPath), ".") {
-		return true
 	}
 
 	return false

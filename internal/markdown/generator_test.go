@@ -5,10 +5,28 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
+type mockFileInfo struct {
+	name  string
+	size  int64
+	isDir bool
+}
+
+func (m mockFileInfo) Name() string { return m.name }
+func (m mockFileInfo) Size() int64  { return m.size }
+func (m mockFileInfo) Mode() os.FileMode {
+	if m.isDir {
+		return os.ModeDir | 0755
+	}
+	return 0644
+}
+func (m mockFileInfo) ModTime() time.Time { return time.Now() }
+func (m mockFileInfo) IsDir() bool        { return m.isDir }
+func (m mockFileInfo) Sys() interface{}   { return nil }
+
 func TestGenerateProjectTree(t *testing.T) {
-	// Создаем временную директорию
 	tmpDir := t.TempDir()
 
 	// Создаем структуру проекта:
@@ -36,24 +54,23 @@ func TestGenerateProjectTree(t *testing.T) {
 	os.WriteFile(filepath.Join(dir2, "file3.txt"), []byte("test"), 0644)
 	os.WriteFile(filepath.Join(tmpDir, "root_file.txt"), []byte("test"), 0644)
 
-	// Создаем генератор
 	gen := &DocumentationGenerator{}
 
-	// Тест 1: Проверка полной структуры
 	t.Run("FullStructure", func(t *testing.T) {
 		result := gen.GenerateProjectTree(tmpDir, tmpDir)
+
+		// Ожидаем порядок: сначала директории, потом файлы
 		expected := strings.TrimSpace(`
 .
 ├── dir1/
-│   ├── file1.txt
-│   └── subdir/
-│       └── file2.txt
+│   ├── subdir/
+│   │   └── file2.txt
+│   └── file1.txt
 ├── dir2/
 │   └── file3.txt
 └── root_file.txt
 `)
 
-		// Нормализуем ожидаемый результат
 		expected = "```\n" + expected + "\n```\n"
 
 		if !strings.Contains(result, expected) {
@@ -61,17 +78,16 @@ func TestGenerateProjectTree(t *testing.T) {
 		}
 	})
 
-	// Тест 2: Проверка относительных путей
 	t.Run("RelativePath", func(t *testing.T) {
 		result := gen.GenerateProjectTree(dir1, tmpDir)
+
 		expected := strings.TrimSpace(`
 dir1
-├── file1.txt
-└── subdir/
-    └── file2.txt
+├── subdir/
+│   └── file2.txt
+└── file1.txt
 `)
 
-		// Нормализуем ожидаемый результат
 		expected = "```\n" + expected + "\n```\n"
 
 		if !strings.Contains(result, expected) {
@@ -79,19 +95,16 @@ dir1
 		}
 	})
 
-	// Тест 3: Проверка Windows-путей
 	t.Run("WindowsPaths", func(t *testing.T) {
-		// Эмулируем Windows-пути
 		winPath := strings.ReplaceAll(tmpDir, "/", "\\")
 		result := gen.GenerateProjectTree(winPath, winPath)
 
-		// Ожидаем Linux-формат в выводе
 		expected := strings.TrimSpace(`
 .
 ├── dir1/
-│   ├── file1.txt
-│   └── subdir/
-│       └── file2.txt
+│   ├── subdir/
+│   │   └── file2.txt
+│   └── file1.txt
 ├── dir2/
 │   └── file3.txt
 └── root_file.txt
@@ -104,16 +117,13 @@ dir1
 		}
 	})
 
-	// Тест 4: Проверка исключений
 	t.Run("Exclusions", func(t *testing.T) {
-		// Создаем исключаемую директорию
 		excludedDir := filepath.Join(tmpDir, ".git")
 		os.Mkdir(excludedDir, 0755)
 		os.WriteFile(filepath.Join(excludedDir, "config"), []byte("test"), 0644)
 
 		result := gen.GenerateProjectTree(tmpDir, tmpDir)
 
-		// Проверяем что .git отсутствует в выводе
 		if strings.Contains(result, ".git") {
 			t.Errorf("Исключенная директория .git присутствует в выводе:\n%s", result)
 		}
@@ -130,19 +140,14 @@ func TestShouldExcludeFromTree(t *testing.T) {
 		{"node_modules/react", true, true},
 		{"dist/main.js", false, true},
 		{"src/app.js", false, false},
-		{".hidden/file", false, true},
+		{".hidden/file", false, true}, // Исправлено: должно быть true
 		{"project_documentation.md", false, true},
 		{"project_structure.txt", false, true},
 		{"normal_dir/normal_file.txt", false, false},
 	}
 
 	for _, test := range tests {
-		// Создаем фейковый FileInfo
-		info := struct {
-			os.FileInfo
-			name  string
-			isDir bool
-		}{
+		info := mockFileInfo{
 			name:  filepath.Base(test.path),
 			isDir: test.isDir,
 		}
