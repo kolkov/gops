@@ -38,7 +38,6 @@ func (d *DocumentationGenerator) WriteHeader(projectName string, currentTime tim
 		d.file.WriteString("**Тип:** Стандартный проект\n\n")
 	}
 
-	// Автоматическое оглавление
 	d.file.WriteString("## Содержание\n")
 	d.file.WriteString("- [Полная структура проекта](#полная-структура-проекта)\n")
 	d.file.WriteString("- [Основные модули](#основные-модули)\n")
@@ -158,6 +157,7 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 	}
 	var nodes []treeNode
 
+	// Собираем все элементы (директории и файлы)
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -188,16 +188,19 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 		return nil
 	})
 
+	// Сортируем узлы по полному пути
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].path < nodes[j].path
 	})
 
+	// Строим карту родительских директорий с путями в едином формате
 	childrenMap := make(map[string][]treeNode)
 	for _, node := range nodes {
-		parent := filepath.Dir(node.path)
+		parent := filepath.ToSlash(filepath.Dir(node.path))
 		childrenMap[parent] = append(childrenMap[parent], node)
 	}
 
+	// Рекурсивная функция для построения дерева
 	var buildTree func(parent string, prefix string)
 	buildTree = func(parent string, prefix string) {
 		children, exists := childrenMap[parent]
@@ -215,6 +218,7 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			}
 		}
 
+		// Сортировка по имени файла/директории
 		sort.Slice(dirs, func(i, j int) bool {
 			return filepath.Base(dirs[i].path) < filepath.Base(dirs[j].path)
 		})
@@ -237,11 +241,7 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 
 			if child.isDir {
 				builder.WriteString(name + "/\n")
-			} else {
-				builder.WriteString(name + "\n")
-			}
-
-			if child.isDir {
+				// Рекурсия только для директорий
 				newPrefix := prefix
 				if isLast {
 					newPrefix += "    "
@@ -249,11 +249,14 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 					newPrefix += "│   "
 				}
 				buildTree(child.path, newPrefix)
+			} else {
+				builder.WriteString(name + "\n")
 			}
 		}
 	}
 
-	buildTree(".", "")
+	// Начинаем с корневой директории
+	buildTree(relRoot, "")
 	builder.WriteString("```\n")
 	return builder.String()
 }

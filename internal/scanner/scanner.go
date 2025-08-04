@@ -157,7 +157,7 @@ func (s *ProjectScanner) processNxProject(
 	projectRoot = filepath.ToSlash(projectRoot)
 	projectBasePath = filepath.ToSlash(projectBasePath)
 
-	docGenerator.WriteProjectTree(project.SourceDir, projectBasePath)
+	docGenerator.WriteProjectTree(projectRoot, projectBasePath)
 	docGenerator.WriteSubHeader("Основные модули")
 
 	return utils.ScanProjectFiles(
