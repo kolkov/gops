@@ -37,6 +37,12 @@ func (d *DocumentationGenerator) WriteHeader(projectName string, currentTime tim
 	} else {
 		d.file.WriteString("**Тип:** Стандартный проект\n\n")
 	}
+
+	// Автоматическое оглавление для всех проектов
+	d.file.WriteString("## Содержание\n")
+	d.file.WriteString("- [Полная структура проекта](#полная-структура-проекта)\n")
+	d.file.WriteString("- [Основные модули](#основные-модули)\n")
+	d.file.WriteString("\n")
 }
 
 func (d *DocumentationGenerator) WriteNxStructure(projects []utils.NxProject) {
@@ -70,6 +76,17 @@ func (d *DocumentationGenerator) WriteFileSection(filePath string, content []byt
 		d.file.WriteString("\n")
 	}
 	d.file.WriteString("```\n\n")
+}
+
+// Новая функция для добавления заголовка "Основные модули"
+func (d *DocumentationGenerator) WriteModulesHeader() {
+	d.file.WriteString("## Основные модули\n\n")
+	d.file.WriteString("В этом разделе представлены ключевые файлы проекта с их исходным кодом:\n\n")
+}
+
+// Новая функция для записи подзаголовков
+func (d *DocumentationGenerator) WriteSubHeader(text string) {
+	d.file.WriteString(fmt.Sprintf("### %s\n\n", text))
 }
 
 func GenerateOutputFilename(currentTime time.Time) string {

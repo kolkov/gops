@@ -78,6 +78,9 @@ func (s *ProjectScanner) scanStandardProject(docGenerator *markdown.Documentatio
 	// Генерация структуры проекта
 	docGenerator.WriteStandardProjectTree(s.rootDir)
 
+	// Добавляем заголовок "Основные модули"
+	docGenerator.WriteModulesHeader()
+
 	// Сканирование файлов
 	return utils.ScanStandardProject(s.rootDir, s.outputFile, func(filePath, lang string, content []byte) {
 		docGenerator.WriteFileSection(filePath, content, lang)
@@ -116,6 +119,9 @@ func (s *ProjectScanner) processNxProject(
 	// Генерация структуры проекта
 	projectRoot := filepath.Join(s.rootDir, project.Root)
 	docGenerator.WriteProjectTree(project.SourceDir, projectRoot)
+
+	// Используем новый метод для записи подзаголовка
+	docGenerator.WriteSubHeader("Основные модули")
 
 	// Сканирование файлов проекта
 	return utils.ScanProjectFiles(
