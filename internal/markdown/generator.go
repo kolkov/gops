@@ -29,8 +29,8 @@ func (d *DocumentationGenerator) Close() {
 
 func (d *DocumentationGenerator) WriteHeader(projectName string, currentTime time.Time, isNx bool) {
 	d.file.WriteString(fmt.Sprintf("# Проект: %s\n\n", projectName))
-	d.file.WriteString(fmt.Sprintf("**Дата генерации:** %s\n", currentTime.Format("2006-01-02 15:04:05")))
-	d.file.WriteString("**Полнота:** Полная документация проекта\n")
+	d.file.WriteString(fmt.Sprintf("**Дата генерации:** %s\n\n", currentTime.Format("2006-01-02 15:04:05")))
+	d.file.WriteString("**Полнота:** Полная документация проекта\n\n")
 
 	if isNx {
 		d.file.WriteString("**Тип:** NX Monorepo\n\n")
