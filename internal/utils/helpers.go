@@ -12,8 +12,9 @@ type NxProject struct {
 	SourceDir string
 }
 
+// Добавляем проверку на корневой project.json
 func IsNxMonorepo(rootDir string) bool {
-	nxFiles := []string{"nx.json", "workspace.json", "project.json"}
+	nxFiles := []string{"nx.json", "workspace.json"}
 	for _, file := range nxFiles {
 		if _, err := os.Stat(filepath.Join(rootDir, file)); err == nil {
 			return true

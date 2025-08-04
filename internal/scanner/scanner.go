@@ -13,14 +13,16 @@ import (
 )
 
 type ProjectScanner struct {
-	rootDir        string
-	outputFile     string
-	nxMonorepo     bool
-	nxProjects     []utils.NxProject
-	IncludeStyles  bool
-	IncludeMarkup  bool
-	IncludeConfigs bool
-	IncludeTests   bool
+	rootDir            string
+	outputFile         string
+	nxMonorepo         bool
+	nxProjects         []utils.NxProject
+	IncludeStyles      bool
+	IncludeMarkup      bool
+	IncludeConfigs     bool
+	IncludeTests       bool
+	IncludeRootPackage bool
+	hasRootPackage     bool
 }
 
 func NewProjectScanner(rootDir, outputFile string) *ProjectScanner {
@@ -45,6 +47,11 @@ func (s *ProjectScanner) AskContentSettings() {
 
 	fmt.Print("4. Включать тестовые файлы? [y/N]: ")
 	s.IncludeTests = readYesNo(reader, false)
+
+	if s.hasRootPackage {
+		fmt.Print("5. Включать корневой package.json? [y/N]: ")
+		s.IncludeRootPackage = readYesNo(reader, false)
+	}
 }
 
 func readYesNo(reader *bufio.Reader, defaultVal bool) bool {
@@ -59,12 +66,6 @@ func readYesNo(reader *bufio.Reader, defaultVal bool) bool {
 }
 
 func (s *ProjectScanner) Scan(docGenerator *markdown.DocumentationGenerator) error {
-	if err := s.initializeScanner(); err != nil {
-		return err
-	}
-
-	s.detectProjectType()
-
 	projectName := filepath.Base(s.rootDir)
 	docGenerator.WriteHeader(projectName, time.Now(), s.nxMonorepo)
 
@@ -83,6 +84,16 @@ func (s *ProjectScanner) detectProjectType() {
 
 func (s *ProjectScanner) scanNxMonorepo(docGenerator *markdown.DocumentationGenerator) error {
 	docGenerator.WriteNxStructure(s.nxProjects)
+
+	if s.IncludeRootPackage {
+		rootPkgPath := filepath.Join(s.rootDir, "package.json")
+		if content, err := os.ReadFile(rootPkgPath); err == nil {
+			docGenerator.WriteSubHeader("Корневой package.json")
+			docGenerator.WriteFileSection("package.json", content, "json", false)
+		} else {
+			fmt.Printf("Ошибка чтения корневого package.json: %v\n", err)
+		}
+	}
 
 	selectedProjects := s.selectProjects()
 	if len(selectedProjects) == 0 {
@@ -153,12 +164,20 @@ func (s *ProjectScanner) processNxProject(
 	projectRoot := filepath.Join(s.rootDir, project.Root)
 	projectBasePath := s.rootDir
 
-	// Нормализация путей для Windows
 	projectRoot = filepath.ToSlash(projectRoot)
 	projectBasePath = filepath.ToSlash(projectBasePath)
 
 	docGenerator.WriteProjectTree(projectRoot, projectBasePath)
 	docGenerator.WriteSubHeader("Основные модули")
+
+	// Всегда включаем project.json проекта, если разрешены конфиги
+	if s.IncludeConfigs {
+		projectJsonPath := filepath.Join(projectRoot, "project.json")
+		if content, err := os.ReadFile(projectJsonPath); err == nil {
+			relPath, _ := filepath.Rel(projectBasePath, projectJsonPath)
+			docGenerator.WriteFileSection(relPath, content, "json", false)
+		}
+	}
 
 	return utils.ScanProjectFiles(
 		project.SourceDir,
@@ -176,26 +195,28 @@ func (s *ProjectScanner) processNxProject(
 }
 
 func (s *ProjectScanner) shouldSkipFileContent(filePath string) bool {
-	ext := strings.ToLower(filepath.Ext(filePath))
 	fileName := strings.ToLower(filepath.Base(filePath))
 
-	// Проверка стилей
+	// Не пропускать project.json проектов (они обрабатываются отдельно)
+	if fileName == "project.json" {
+		return false
+	}
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+
 	if !s.IncludeStyles && (ext == ".css" || ext == ".scss" || ext == ".less") {
 		return true
 	}
 
-	// Проверка разметки
 	if !s.IncludeMarkup && (ext == ".html" || ext == ".htm") {
 		return true
 	}
 
-	// Проверка конфигов
 	if !s.IncludeConfigs && (strings.Contains(fileName, "config") ||
 		ext == ".json" || ext == ".yaml" || ext == ".yml") {
 		return true
 	}
 
-	// Проверка тестов
 	if !s.IncludeTests && (strings.Contains(fileName, ".spec.") ||
 		strings.Contains(fileName, ".test.") ||
 		strings.HasSuffix(fileName, "_test.go")) {
@@ -225,7 +246,7 @@ func (s *ProjectScanner) validatePaths() error {
 	return nil
 }
 
-func (s *ProjectScanner) initializeScanner() error {
+func (s *ProjectScanner) InitializeScanner() error {
 	if absRoot, err := filepath.Abs(s.rootDir); err == nil {
 		s.rootDir = absRoot
 	} else {
@@ -236,6 +257,14 @@ func (s *ProjectScanner) initializeScanner() error {
 		s.outputFile = absOutput
 	} else {
 		return fmt.Errorf("ошибка получения абсолютного пути: %v", err)
+	}
+
+	s.detectProjectType()
+
+	// Проверяем наличие корневого package.json
+	rootPkgPath := filepath.Join(s.rootDir, "package.json")
+	if _, err := os.Stat(rootPkgPath); err == nil {
+		s.hasRootPackage = true
 	}
 
 	return s.validatePaths()

@@ -16,21 +16,21 @@ func main() {
 		return
 	}
 
-	// Генерация имени выходного файла
 	currentTime := time.Now()
 	outputFile := markdown.GenerateOutputFilename(currentTime)
 
-	// Создание генератора документации
 	docGenerator := markdown.NewDocumentationGenerator(outputFile)
 	defer docGenerator.Close()
 
-	// Создание сканера
 	projectScanner := scanner.NewProjectScanner(rootDir, outputFile)
 
-	// Запрос настроек документации
+	if err := projectScanner.InitializeScanner(); err != nil {
+		fmt.Printf("Ошибка инициализации сканера: %v\n", err)
+		return
+	}
+
 	projectScanner.AskContentSettings()
 
-	// Сканирование проекта
 	if err := projectScanner.Scan(docGenerator); err != nil {
 		fmt.Printf("Ошибка сканирования проекта: %v\n", err)
 		os.Exit(1)
