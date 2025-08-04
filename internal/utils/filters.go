@@ -10,6 +10,7 @@ func ShouldSkipDir(name string) bool {
 	skipDirs := []string{
 		"vendor", "node_modules", ".git", ".vscode", ".idea", "dist",
 		"build", "__pycache__", "bin", "obj", "testdata", "coverage",
+		".angular", ".nx",
 	}
 	for _, dir := range skipDirs {
 		if name == dir {
@@ -20,11 +21,30 @@ func ShouldSkipDir(name string) bool {
 }
 
 func ShouldIncludeFile(name string) bool {
-	ext := filepath.Ext(name)
-	return ext == ".go" || name == "go.mod" || name == "go.sum" ||
-		ext == ".ts" || ext == ".html" || ext == ".scss" || ext == ".css" ||
-		ext == ".json" || strings.HasSuffix(name, "angular.json") ||
-		strings.HasSuffix(name, "package.json") || strings.HasSuffix(name, "tsconfig.json")
+	fileExt := filepath.Ext(name) // Исправлено: переменная переименована
+	includeExtensions := []string{
+		".go", ".ts", ".html", ".scss", ".css",
+		".json", ".yaml", ".yml", ".md",
+	}
+
+	for _, ext := range includeExtensions {
+		if strings.EqualFold(fileExt, ext) {
+			return true
+		}
+	}
+
+	includeFiles := []string{
+		"go.mod", "go.sum", "angular.json",
+		"package.json", "tsconfig.json", "project.json",
+	}
+
+	for _, file := range includeFiles {
+		if strings.EqualFold(name, file) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func IsGeneratedFile(filename, currentOutput string) bool {
@@ -42,21 +62,23 @@ func IsGeneratedFile(filename, currentOutput string) bool {
 }
 
 func GetFileLanguage(path string) string {
-	switch {
-	case strings.HasSuffix(path, ".mod"):
+	switch filepath.Ext(path) {
+	case ".mod", ".sum":
 		return "mod"
-	case strings.HasSuffix(path, ".sum"):
-		return "mod"
-	case strings.HasSuffix(path, ".ts"):
+	case ".ts", ".tsx":
 		return "typescript"
-	case strings.HasSuffix(path, ".html"):
+	case ".html", ".htm":
 		return "html"
-	case strings.HasSuffix(path, ".scss"):
+	case ".scss", ".sass":
 		return "scss"
-	case strings.HasSuffix(path, ".css"):
+	case ".css":
 		return "css"
-	case strings.HasSuffix(path, ".json"):
+	case ".json":
 		return "json"
+	case ".yaml", ".yml":
+		return "yaml"
+	case ".md":
+		return "markdown"
 	default:
 		return "go"
 	}
@@ -68,7 +90,6 @@ func FilterProjects(projects []NxProject, input string) []NxProject {
 		return nil
 	}
 
-	// Специальные случаи
 	if strings.EqualFold(input, "all") {
 		return projects
 	}
@@ -81,7 +102,6 @@ func FilterProjects(projects []NxProject, input string) []NxProject {
 		}
 	}
 
-	// Выбор конкретных проектов
 	return selectSpecificProjects(projects, input)
 }
 

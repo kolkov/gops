@@ -38,10 +38,13 @@ func (d *DocumentationGenerator) WriteHeader(projectName string, currentTime tim
 		d.file.WriteString("**Тип:** Стандартный проект\n\n")
 	}
 
-	// Автоматическое оглавление для всех проектов
+	// Автоматическое оглавление
 	d.file.WriteString("## Содержание\n")
 	d.file.WriteString("- [Полная структура проекта](#полная-структура-проекта)\n")
 	d.file.WriteString("- [Основные модули](#основные-модули)\n")
+	if isNx {
+		d.file.WriteString("- [Общая структура Nx Monorepo](#общая-структура-nx-monorepo)\n")
+	}
 	d.file.WriteString("\n")
 }
 
@@ -68,8 +71,15 @@ func (d *DocumentationGenerator) WriteStandardProjectTree(rootDir string) {
 	d.file.WriteString("\n")
 }
 
-func (d *DocumentationGenerator) WriteFileSection(filePath string, content []byte, lang string) {
+func (d *DocumentationGenerator) WriteFileSection(filePath string, content []byte, lang string, skipContent bool) {
 	d.file.WriteString(fmt.Sprintf("### %s\n\n", filePath))
+
+	if skipContent {
+		d.file.WriteString("```\n[Содержимое файла пропущено]\n```\n\n")
+		d.file.WriteString("_Файл был пропущен по настройкам документации. Для просмотра запросите у пользователя._\n\n")
+		return
+	}
+
 	d.file.WriteString(fmt.Sprintf("```%s\n", lang))
 	d.file.Write(content)
 	if len(content) > 0 && content[len(content)-1] != '\n' {
@@ -78,40 +88,45 @@ func (d *DocumentationGenerator) WriteFileSection(filePath string, content []byt
 	d.file.WriteString("```\n\n")
 }
 
-// Новая функция для добавления заголовка "Основные модули"
 func (d *DocumentationGenerator) WriteModulesHeader() {
 	d.file.WriteString("## Основные модули\n\n")
 	d.file.WriteString("В этом разделе представлены ключевые файлы проекта с их исходным кодом:\n\n")
 }
 
-// Новая функция для записи подзаголовков
 func (d *DocumentationGenerator) WriteSubHeader(text string) {
 	d.file.WriteString(fmt.Sprintf("### %s\n\n", text))
+}
+
+func (d *DocumentationGenerator) WriteSkippedFilesNote() {
+	d.file.WriteString("\n## Примечание о пропущенных файлах\n\n")
+	d.file.WriteString("По настройкам документации были пропущены:\n")
+	d.file.WriteString("- Файлы стилей (CSS, SCSS)\n")
+	d.file.WriteString("- Файлы разметки (HTML)\n")
+	d.file.WriteString("- Конфигурационные файлы\n")
+	d.file.WriteString("- Тестовые файлы\n\n")
+	d.file.WriteString("Если вам необходимо содержание этих файлов для анализа или исправления кода, запросите у пользователя конкретные файлы по их путям.\n\n")
+	d.file.WriteString("**Не предполагайте содержимое пропущенных файлов!** Всегда запрашивайте точные данные у пользователя.\n")
 }
 
 func GenerateOutputFilename(currentTime time.Time) string {
 	return fmt.Sprintf("project_documentation_%s.md", currentTime.Format("20060102_150405"))
 }
 
-// GenerateNxStructure создает структуру Nx Monorepo в формате Markdown
 func (d *DocumentationGenerator) GenerateNxStructure(projects []utils.NxProject) string {
 	var builder strings.Builder
 	builder.WriteString("```\nnx-monorepo/\n")
 
-	// Группировка проектов по типу
 	projectsByType := make(map[string][]utils.NxProject)
 	for _, p := range projects {
 		projectsByType[p.Type] = append(projectsByType[p.Type], p)
 	}
 
-	// Сортировка типов для детерминированного вывода
 	var types []string
 	for t := range projectsByType {
 		types = append(types, t)
 	}
 	sort.Strings(types)
 
-	// Построение структуры
 	for _, t := range types {
 		projects := projectsByType[t]
 		builder.WriteString(fmt.Sprintf("├── %ss/\n", t))
@@ -127,10 +142,15 @@ func (d *DocumentationGenerator) GenerateNxStructure(projects []utils.NxProject)
 	return builder.String()
 }
 
-// GenerateProjectTree создает древовидную структуру проекта
 func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) string {
 	var builder strings.Builder
-	builder.WriteString("```\n.\n") // Корень обозначается точкой
+	relRoot, err := filepath.Rel(basePath, root)
+	if err != nil {
+		relRoot = "."
+	} else {
+		relRoot = filepath.ToSlash(relRoot)
+	}
+	builder.WriteString("```\n" + relRoot + "\n")
 
 	type treeNode struct {
 		path  string
@@ -138,13 +158,11 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 	}
 	var nodes []treeNode
 
-	// Собираем все элементы (директории и файлы)
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 
-		// Пропускаем корневую директорию
 		if path == root {
 			return nil
 		}
@@ -153,8 +171,8 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 		if err != nil {
 			return nil
 		}
+		relPath = filepath.ToSlash(relPath)
 
-		// Пропускаем нежелательные элементы
 		if shouldExcludeFromTree(relPath, info) {
 			if info.IsDir() {
 				return filepath.SkipDir
@@ -170,19 +188,16 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 		return nil
 	})
 
-	// Сортируем узлы по полному пути
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].path < nodes[j].path
 	})
 
-	// Строим карту родительских директорий
 	childrenMap := make(map[string][]treeNode)
 	for _, node := range nodes {
 		parent := filepath.Dir(node.path)
 		childrenMap[parent] = append(childrenMap[parent], node)
 	}
 
-	// Рекурсивная функция для построения дерева
 	var buildTree func(parent string, prefix string)
 	buildTree = func(parent string, prefix string) {
 		children, exists := childrenMap[parent]
@@ -190,7 +205,6 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			return
 		}
 
-		// Разделяем на директории и файлы
 		var dirs []treeNode
 		var files []treeNode
 		for _, child := range children {
@@ -201,7 +215,6 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			}
 		}
 
-		// Сортируем директории и файлы по имени
 		sort.Slice(dirs, func(i, j int) bool {
 			return filepath.Base(dirs[i].path) < filepath.Base(dirs[j].path)
 		})
@@ -209,14 +222,12 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			return filepath.Base(files[i].path) < filepath.Base(files[j].path)
 		})
 
-		// Объединяем: сначала директории, потом файлы
 		sortedChildren := append(dirs, files...)
 
 		for i, child := range sortedChildren {
 			isLast := i == len(sortedChildren)-1
 			name := filepath.Base(child.path)
 
-			// Текущая строка
 			builder.WriteString(prefix)
 			if isLast {
 				builder.WriteString("└── ")
@@ -230,7 +241,6 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 				builder.WriteString(name + "\n")
 			}
 
-			// Рекурсия для поддиректорий
 			if child.isDir {
 				newPrefix := prefix
 				if isLast {
@@ -243,58 +253,28 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 		}
 	}
 
-	// Начинаем с корневой директории
 	buildTree(".", "")
-
 	builder.WriteString("```\n")
 	return builder.String()
 }
 
-// shouldExcludeFromTree определяет, нужно ли исключить элемент из дерева
 func shouldExcludeFromTree(relPath string, info os.FileInfo) bool {
-	// Пропускаем .git и его содержимое
-	if strings.HasPrefix(relPath, ".git") {
-		return true
+	// Пропускаем системные и временные файлы
+	excludePatterns := []string{
+		".git", ".vscode", ".idea", "node_modules", "dist", "build",
+		".angular", ".nx", "coverage", "__pycache__", "bin", "obj",
+		"project_documentation", "project_structure.txt",
 	}
 
-	// Пропускаем сгенерированные файлы документации
-	if strings.HasPrefix(info.Name(), "project_documentation") &&
-		strings.HasSuffix(info.Name(), ".md") {
-		return true
-	}
-
-	// Пропускаем бинарные файлы git
-	if strings.Contains(relPath, "objects") && len(info.Name()) == 38 {
-		return true
-	}
-
-	// Пропускаем файлы git
-	gitFiles := []string{"HEAD", "COMMIT_EDITMSG", "config", "description", "index"}
-	for _, file := range gitFiles {
-		if info.Name() == file {
+	for _, pattern := range excludePatterns {
+		if strings.Contains(relPath, pattern) {
 			return true
 		}
 	}
 
-	// Пропускаем скрытые файлы/папки (начинающиеся с точки)
-	if strings.HasPrefix(info.Name(), ".") {
+	// Пропускаем скрытые файлы/папки
+	if strings.HasPrefix(filepath.Base(relPath), ".") {
 		return true
-	}
-
-	// Пропускаем системные папки
-	skipDirs := []string{"hooks", "info", "logs", "refs", "objects", "pack", "smartgit", "node_modules"}
-	for _, dir := range skipDirs {
-		if info.IsDir() && info.Name() == dir {
-			return true
-		}
-	}
-
-	// Пропускаем IDE-специфичные файлы
-	ideFiles := []string{".idea", ".vscode", "workspace.xml", "modules.xml", "*.iml"}
-	for _, file := range ideFiles {
-		if strings.Contains(relPath, file) {
-			return true
-		}
 	}
 
 	return false

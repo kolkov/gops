@@ -25,7 +25,6 @@ func IsNxMonorepo(rootDir string) bool {
 func ParseNxProjects(rootDir string) []NxProject {
 	projects := []NxProject{}
 
-	// Сканирование директорий
 	scanDir := func(dir, ptype string) {
 		dirPath := filepath.Join(rootDir, dir)
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
@@ -66,13 +65,25 @@ func ParseNxProjects(rootDir string) []NxProject {
 	return projects
 }
 
-func ScanProjectFiles(sourceDir, rootDir, outputFile string, processFile func(string, string, []byte)) error {
+func ScanProjectFiles(
+	sourceDir,
+	rootDir,
+	outputFile string,
+	processFile func(string, string, []byte),
+	includeStyles,
+	includeMarkup,
+	includeConfigs,
+	includeTests bool,
+) error {
 	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if info.IsDir() {
+			if ShouldSkipDir(info.Name()) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -92,7 +103,15 @@ func ScanProjectFiles(sourceDir, rootDir, outputFile string, processFile func(st
 	})
 }
 
-func ScanStandardProject(rootDir, outputFile string, processFile func(string, string, []byte)) error {
+func ScanStandardProject(
+	rootDir,
+	outputFile string,
+	processFile func(string, string, []byte),
+	includeStyles,
+	includeMarkup,
+	includeConfigs,
+	includeTests bool,
+) error {
 	return filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

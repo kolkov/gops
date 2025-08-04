@@ -24,8 +24,13 @@ func main() {
 	docGenerator := markdown.NewDocumentationGenerator(outputFile)
 	defer docGenerator.Close()
 
-	// Сканирование проекта
+	// Создание сканера
 	projectScanner := scanner.NewProjectScanner(rootDir, outputFile)
+
+	// Запрос настроек документации
+	projectScanner.AskContentSettings()
+
+	// Сканирование проекта
 	if err := projectScanner.Scan(docGenerator); err != nil {
 		fmt.Printf("Ошибка сканирования проекта: %v\n", err)
 		os.Exit(1)
