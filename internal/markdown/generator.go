@@ -13,7 +13,8 @@ import (
 )
 
 type DocumentationGenerator struct {
-	file *os.File
+	file       *os.File
+	outputFile string
 }
 
 func NewDocumentationGenerator(filename string) *DocumentationGenerator {
@@ -21,7 +22,7 @@ func NewDocumentationGenerator(filename string) *DocumentationGenerator {
 	if err != nil {
 		panic(fmt.Sprintf("Ошибка создания файла: %v", err))
 	}
-	return &DocumentationGenerator{file: file}
+	return &DocumentationGenerator{file: file, outputFile: filename}
 }
 
 func (d *DocumentationGenerator) Close() {
@@ -70,9 +71,9 @@ func (d *DocumentationGenerator) WriteHeader(
 	d.file.WriteString("\n")
 }
 
-func (d *DocumentationGenerator) WriteNxStructure(projects []utils.NxProject) {
+func (d *DocumentationGenerator) WriteNxStructure(projects []utils.NxProject, rootDir string) {
 	d.file.WriteString("## Общая структура Nx Monorepo\n\n")
-	d.file.WriteString(d.GenerateNxStructure(projects))
+	d.file.WriteString(d.GenerateNxStructure(projects, rootDir))
 	d.file.WriteString("\n")
 }
 
@@ -134,10 +135,11 @@ func GenerateOutputFilename(currentTime time.Time) string {
 	return fmt.Sprintf("project_documentation_%s.md", currentTime.Format("20060102_150405"))
 }
 
-func (d *DocumentationGenerator) GenerateNxStructure(projects []utils.NxProject) string {
+func (d *DocumentationGenerator) GenerateNxStructure(projects []utils.NxProject, rootDir string) string {
 	var builder strings.Builder
 	builder.WriteString("```\nnx-monorepo/\n")
 
+	// Сначала выводим папки проектов
 	projectsByType := make(map[string][]utils.NxProject)
 	for _, p := range projects {
 		projectsByType[p.Type] = append(projectsByType[p.Type], p)
@@ -153,15 +155,94 @@ func (d *DocumentationGenerator) GenerateNxStructure(projects []utils.NxProject)
 		projects := projectsByType[t]
 		builder.WriteString(fmt.Sprintf("├── %ss/\n", t))
 		for i, p := range projects {
-			prefix := "├──"
+			prefix := "├── "
 			if i == len(projects)-1 {
-				prefix = "└──"
+				prefix = "└── "
 			}
 			builder.WriteString(fmt.Sprintf("│   %s %s\n", prefix, p.Name))
 		}
 	}
+
+	// Добавляем разделительную линию после проектов, если они есть
+	if len(projects) > 0 {
+		builder.WriteString("│\n")
+	}
+
+	// Динамически сканируем корневую директорию на наличие файлов
+	rootFiles, err := d.scanRootFiles(rootDir)
+	if err != nil {
+		fmt.Printf("Ошибка сканирования корневой директории: %v\n", err)
+		// Продолжаем работу, даже если возникла ошибка
+	}
+
+	sort.Strings(rootFiles)
+
+	for i, file := range rootFiles {
+		isLast := i == len(rootFiles)-1
+		if isLast {
+			builder.WriteString(fmt.Sprintf("└── %s\n", file))
+		} else {
+			builder.WriteString(fmt.Sprintf("├── %s\n", file))
+		}
+	}
+
 	builder.WriteString("```\n")
 	return builder.String()
+}
+
+// Новая функция для сканирования корневых файлов
+func (d *DocumentationGenerator) scanRootFiles(rootDir string) ([]string, error) {
+	files, err := os.ReadDir(rootDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var rootFiles []string
+	for _, file := range files {
+		// Пропускаем директории
+		if file.IsDir() {
+			continue
+		}
+
+		// Проверяем, должен ли файл быть включен в структуру
+		if d.shouldIncludeRootFile(file.Name()) {
+			rootFiles = append(rootFiles, file.Name())
+		}
+	}
+
+	return rootFiles, nil
+}
+
+// Функция проверки, должен ли файл быть включен
+func (d *DocumentationGenerator) shouldIncludeRootFile(name string) bool {
+	// Исключаем lock-файлы
+	if name == "package-lock.json" || name == "yarn.lock" {
+		return false
+	}
+
+	// Исключаем сгенерированные файлы документации
+	if utils.IsGeneratedFile(name, d.outputFile) {
+		return false
+	}
+
+	// Используем существующую логику фильтрации из utils
+	if !utils.ShouldIncludeFile(name) {
+		return false
+	}
+
+	// Дополнительные проверки для корневых файлов
+	excludePatterns := []string{
+		".DS_Store", "Thumbs.db", ".env", ".env.local",
+		".env.development", ".env.production",
+	}
+
+	for _, pattern := range excludePatterns {
+		if name == pattern {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) string {

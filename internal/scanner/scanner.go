@@ -350,7 +350,7 @@ func (s *ProjectScanner) scanGenericJSProject(docGenerator *markdown.Documentati
 
 func (s *ProjectScanner) scanNxMonorepo(docGenerator *markdown.DocumentationGenerator) error {
 	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), true, projecttype.NxMonorepo, "NX Monorepo")
-	docGenerator.WriteNxStructure(s.nxProjects)
+	docGenerator.WriteNxStructure(s.nxProjects, s.rootDir)
 
 	if s.IncludeRootPackage && s.hasRootPackage {
 		rootPkgPath := filepath.Join(s.rootDir, "package.json")
