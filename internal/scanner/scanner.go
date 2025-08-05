@@ -15,6 +15,7 @@ import (
 type ProjectScanner struct {
 	rootDir            string
 	outputFile         string
+	projectType        string
 	nxMonorepo         bool
 	nxProjects         []utils.NxProject
 	IncludeStyles      bool
@@ -35,7 +36,7 @@ func NewProjectScanner(rootDir, outputFile string) *ProjectScanner {
 func (s *ProjectScanner) AskContentSettings() {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Println("\nНастройки документации для ВСЕХ проектов:")
+	fmt.Println("\nНастройки документации:")
 	fmt.Print("1. Включать файлы стилей (CSS, SCSS)? [y/N]: ")
 	s.IncludeStyles = readYesNo(reader, false)
 
@@ -49,8 +50,8 @@ func (s *ProjectScanner) AskContentSettings() {
 	s.IncludeTests = readYesNo(reader, false)
 
 	if s.hasRootPackage {
-		fmt.Print("5. Включать корневой package.json? [y/N]: ")
-		s.IncludeRootPackage = readYesNo(reader, false)
+		fmt.Print("5. Включать корневой package.json? [Y/n]: ")
+		s.IncludeRootPackage = readYesNo(reader, true)
 	}
 }
 
@@ -66,32 +67,283 @@ func readYesNo(reader *bufio.Reader, defaultVal bool) bool {
 }
 
 func (s *ProjectScanner) Scan(docGenerator *markdown.DocumentationGenerator) error {
-	projectName := filepath.Base(s.rootDir)
-	docGenerator.WriteHeader(projectName, time.Now(), s.nxMonorepo)
-
-	if s.nxMonorepo {
-		return s.scanNxMonorepo(docGenerator)
+	// Двойная проверка на конфликт Go и JS
+	if s.hasConflictingFiles() {
+		return fmt.Errorf("обнаружены оба файла: go.mod и package.json. Сканирование невозможно")
 	}
-	return s.scanStandardProject(docGenerator)
+
+	//projectName := filepath.Base(s.rootDir)
+	var subType string
+
+	switch s.projectType {
+	case "nx":
+		subType = "NX Monorepo"
+		return s.scanNxMonorepo(docGenerator)
+	case "js", "angular", "browser-extension":
+		subType = strings.ToUpper(s.projectType[:1]) + s.projectType[1:]
+		return s.scanJSProject(docGenerator, subType)
+	case "go":
+		subType = "Go"
+		return s.scanStandardProject(docGenerator)
+	default:
+		if utils.ContainsJSFiles(s.rootDir) {
+			s.projectType = "js"
+			subType = "JavaScript (автоопределение)"
+			return s.scanJSProject(docGenerator, subType)
+		}
+		return fmt.Errorf("не удалось определить тип проекта")
+	}
 }
 
-func (s *ProjectScanner) detectProjectType() {
+func (s *ProjectScanner) hasConflictingFiles() bool {
+	_, goModExists := os.Stat(filepath.Join(s.rootDir, "go.mod"))
+	_, pkgJsonExists := os.Stat(filepath.Join(s.rootDir, "package.json"))
+	return goModExists == nil && pkgJsonExists == nil
+}
+
+func (s *ProjectScanner) InitializeScanner() error {
+	if absRoot, err := filepath.Abs(s.rootDir); err == nil {
+		s.rootDir = absRoot
+	} else {
+		return fmt.Errorf("ошибка получения абсолютного пути: %v", err)
+	}
+
+	if absOutput, err := filepath.Abs(s.outputFile); err == nil {
+		s.outputFile = absOutput
+	} else {
+		return fmt.Errorf("ошибка получения абсолютного пути: %v", err)
+	}
+
+	if err := s.detectProjectType(); err != nil {
+		return err
+	}
+
+	if s.projectType == "js" || s.projectType == "angular" || s.projectType == "browser-extension" || s.projectType == "nx" {
+		rootPkgPath := filepath.Join(s.rootDir, "package.json")
+		if _, err := os.Stat(rootPkgPath); err == nil {
+			s.hasRootPackage = true
+		}
+	}
+
+	return s.validatePaths()
+}
+
+func (s *ProjectScanner) detectProjectType() error {
+	// Проверка на конфликт Go и JS
+	goModPath := filepath.Join(s.rootDir, "go.mod")
+	pkgJsonPath := filepath.Join(s.rootDir, "package.json")
+
+	_, goModExists := os.Stat(goModPath)
+	_, pkgJsonExists := os.Stat(pkgJsonPath)
+
+	if goModExists == nil && pkgJsonExists == nil {
+		return fmt.Errorf("обнаружены и go.mod, и package.json в корне проекта. Это не поддерживается")
+	}
+
+	// Приоритет 1: Nx Monorepo
 	if utils.IsNxMonorepo(s.rootDir) {
+		s.projectType = "nx"
 		s.nxMonorepo = true
 		s.nxProjects = utils.ParseNxProjects(s.rootDir)
+		return nil
 	}
+
+	// Приоритет 2: Специфичные типы проектов
+	if s.isBrowserExtension() {
+		s.projectType = "browser-extension"
+		return nil
+	}
+
+	if s.isAngularProject() {
+		s.projectType = "angular"
+		return nil
+	}
+
+	// Приоритет 3: Общие типы проектов
+	if pkgJsonExists == nil {
+		s.projectType = "js"
+		return nil
+	}
+
+	if goModExists == nil {
+		s.projectType = "go"
+		return nil
+	}
+
+	s.projectType = "unknown"
+	return nil
+}
+
+func (s *ProjectScanner) isBrowserExtension() bool {
+	manifestPath := filepath.Join(s.rootDir, "manifest.json")
+	if _, err := os.Stat(manifestPath); err == nil {
+		return true
+	}
+
+	browserFiles := []string{"background.js", "content-script.js", "popup.html"}
+	count := 0
+	for _, file := range browserFiles {
+		filePath := filepath.Join(s.rootDir, file)
+		if _, err := os.Stat(filePath); err == nil {
+			count++
+		}
+	}
+	return count >= 2
+}
+
+func (s *ProjectScanner) isAngularProject() bool {
+	angularJsonPath := filepath.Join(s.rootDir, "angular.json")
+	if _, err := os.Stat(angularJsonPath); err == nil {
+		return true
+	}
+
+	angularFiles := []string{"src/main.ts", "src/app/app.module.ts"}
+	count := 0
+	for _, file := range angularFiles {
+		filePath := filepath.Join(s.rootDir, file)
+		if _, err := os.Stat(filePath); err == nil {
+			count++
+		}
+	}
+	return count >= 2
+}
+
+func (s *ProjectScanner) scanJSProject(docGenerator *markdown.DocumentationGenerator, subType string) error {
+	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), false, s.projectType, subType)
+	docGenerator.WriteStandardProjectTree(s.rootDir)
+	docGenerator.WriteModulesHeader()
+
+	s.processMandatoryJSFiles(docGenerator)
+
+	switch s.projectType {
+	case "browser-extension":
+		return s.scanBrowserExtension(docGenerator)
+	case "angular":
+		return s.scanAngularProject(docGenerator)
+	default:
+		return s.scanGenericJSProject(docGenerator)
+	}
+}
+
+func (s *ProjectScanner) processMandatoryJSFiles(docGenerator *markdown.DocumentationGenerator) {
+	mandatoryFiles := []string{"package.json"}
+	if s.IncludeRootPackage && s.hasRootPackage {
+		mandatoryFiles = append(mandatoryFiles, "package-lock.json", "yarn.lock")
+	}
+
+	for _, file := range mandatoryFiles {
+		filePath := filepath.Join(s.rootDir, file)
+		if _, err := os.Stat(filePath); err == nil {
+			content, err := os.ReadFile(filePath)
+			if err == nil {
+				lang := "json"
+				docGenerator.WriteFileSection(file, content, lang, false)
+			}
+		}
+	}
+}
+
+func (s *ProjectScanner) scanBrowserExtension(docGenerator *markdown.DocumentationGenerator) error {
+	extensionFiles := []string{"manifest.json", "background.js", "content-script.js"}
+
+	for _, file := range extensionFiles {
+		filePath := filepath.Join(s.rootDir, file)
+		if _, err := os.Stat(filePath); err == nil {
+			content, err := os.ReadFile(filePath)
+			if err == nil {
+				lang := "json"
+				if strings.HasSuffix(file, ".js") {
+					lang = "javascript"
+				}
+				docGenerator.WriteFileSection(file, content, lang, false)
+			}
+		}
+	}
+
+	return s.scanGenericJSProject(docGenerator)
+}
+
+func (s *ProjectScanner) scanAngularProject(docGenerator *markdown.DocumentationGenerator) error {
+	angularFiles := []string{"angular.json", "src/main.ts", "src/app/app.module.ts"}
+
+	for _, file := range angularFiles {
+		filePath := filepath.Join(s.rootDir, file)
+		if _, err := os.Stat(filePath); err == nil {
+			content, err := os.ReadFile(filePath)
+			if err == nil {
+				lang := "typescript"
+				if strings.HasSuffix(file, ".json") {
+					lang = "json"
+				}
+				docGenerator.WriteFileSection(file, content, lang, false)
+			}
+		}
+	}
+
+	return s.scanGenericJSProject(docGenerator)
+}
+
+func (s *ProjectScanner) scanGenericJSProject(docGenerator *markdown.DocumentationGenerator) error {
+	return filepath.Walk(s.rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			if utils.ShouldSkipDir(info.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(s.rootDir, path)
+		ext := strings.ToLower(filepath.Ext(path))
+
+		shouldProcess := false
+		switch ext {
+		case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+			shouldProcess = true
+		case ".css", ".scss", ".less":
+			shouldProcess = s.IncludeStyles
+		case ".html", ".htm":
+			shouldProcess = s.IncludeMarkup
+		case ".json", ".yaml", ".yml":
+			shouldProcess = s.IncludeConfigs
+		}
+
+		if shouldProcess && !s.IncludeTests {
+			fileName := strings.ToLower(info.Name())
+			if strings.Contains(fileName, ".test.") ||
+				strings.Contains(fileName, ".spec.") ||
+				strings.Contains(filepath.Dir(path), "test") ||
+				strings.Contains(filepath.Dir(path), "__tests__") {
+				shouldProcess = false
+			}
+		}
+
+		if shouldProcess {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+
+			lang := utils.GetFileLanguage(path)
+			docGenerator.WriteFileSection(relPath, content, lang, false)
+		}
+
+		return nil
+	})
 }
 
 func (s *ProjectScanner) scanNxMonorepo(docGenerator *markdown.DocumentationGenerator) error {
+	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), true, "nx", "NX Monorepo")
 	docGenerator.WriteNxStructure(s.nxProjects)
 
-	if s.IncludeRootPackage {
+	if s.IncludeRootPackage && s.hasRootPackage {
 		rootPkgPath := filepath.Join(s.rootDir, "package.json")
 		if content, err := os.ReadFile(rootPkgPath); err == nil {
 			docGenerator.WriteSubHeader("Корневой package.json")
 			docGenerator.WriteFileSection("package.json", content, "json", false)
-		} else {
-			fmt.Printf("Ошибка чтения корневого package.json: %v\n", err)
 		}
 	}
 
@@ -111,24 +363,6 @@ func (s *ProjectScanner) scanNxMonorepo(docGenerator *markdown.DocumentationGene
 	}
 
 	return nil
-}
-
-func (s *ProjectScanner) scanStandardProject(docGenerator *markdown.DocumentationGenerator) error {
-	docGenerator.WriteStandardProjectTree(s.rootDir)
-	docGenerator.WriteModulesHeader()
-
-	return utils.ScanStandardProject(
-		s.rootDir,
-		s.outputFile,
-		func(filePath, lang string, content []byte) {
-			skip := s.shouldSkipFileContent(filePath)
-			docGenerator.WriteFileSection(filePath, content, lang, skip)
-		},
-		s.IncludeStyles,
-		s.IncludeMarkup,
-		s.IncludeConfigs,
-		s.IncludeTests,
-	)
 }
 
 func (s *ProjectScanner) selectProjects() []utils.NxProject {
@@ -170,7 +404,6 @@ func (s *ProjectScanner) processNxProject(
 	docGenerator.WriteProjectTree(projectRoot, projectBasePath)
 	docGenerator.WriteSubHeader("Основные модули")
 
-	// Всегда включаем project.json проекта, если разрешены конфиги
 	if s.IncludeConfigs {
 		projectJsonPath := filepath.Join(projectRoot, "project.json")
 		if content, err := os.ReadFile(projectJsonPath); err == nil {
@@ -197,7 +430,6 @@ func (s *ProjectScanner) processNxProject(
 func (s *ProjectScanner) shouldSkipFileContent(filePath string) bool {
 	fileName := strings.ToLower(filepath.Base(filePath))
 
-	// Не пропускать project.json проектов (они обрабатываются отдельно)
 	if fileName == "project.json" {
 		return false
 	}
@@ -219,11 +451,31 @@ func (s *ProjectScanner) shouldSkipFileContent(filePath string) bool {
 
 	if !s.IncludeTests && (strings.Contains(fileName, ".spec.") ||
 		strings.Contains(fileName, ".test.") ||
-		strings.HasSuffix(fileName, "_test.go")) {
+		strings.HasSuffix(fileName, "_test.go") ||
+		strings.HasSuffix(fileName, "_test.js")) {
 		return true
 	}
 
 	return false
+}
+
+func (s *ProjectScanner) scanStandardProject(docGenerator *markdown.DocumentationGenerator) error {
+	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), false, "go", "Go проект")
+	docGenerator.WriteStandardProjectTree(s.rootDir)
+	docGenerator.WriteModulesHeader()
+
+	return utils.ScanStandardProject(
+		s.rootDir,
+		s.outputFile,
+		func(filePath, lang string, content []byte) {
+			skip := s.shouldSkipFileContent(filePath)
+			docGenerator.WriteFileSection(filePath, content, lang, skip)
+		},
+		s.IncludeStyles,
+		s.IncludeMarkup,
+		s.IncludeConfigs,
+		s.IncludeTests,
+	)
 }
 
 func (s *ProjectScanner) validatePaths() error {
@@ -244,28 +496,4 @@ func (s *ProjectScanner) validatePaths() error {
 	}
 
 	return nil
-}
-
-func (s *ProjectScanner) InitializeScanner() error {
-	if absRoot, err := filepath.Abs(s.rootDir); err == nil {
-		s.rootDir = absRoot
-	} else {
-		return fmt.Errorf("ошибка получения абсолютного пути: %v", err)
-	}
-
-	if absOutput, err := filepath.Abs(s.outputFile); err == nil {
-		s.outputFile = absOutput
-	} else {
-		return fmt.Errorf("ошибка получения абсолютного пути: %v", err)
-	}
-
-	s.detectProjectType()
-
-	// Проверяем наличие корневого package.json
-	rootPkgPath := filepath.Join(s.rootDir, "package.json")
-	if _, err := os.Stat(rootPkgPath); err == nil {
-		s.hasRootPackage = true
-	}
-
-	return s.validatePaths()
 }

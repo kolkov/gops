@@ -27,7 +27,13 @@ func (d *DocumentationGenerator) Close() {
 	d.file.Close()
 }
 
-func (d *DocumentationGenerator) WriteHeader(projectName string, currentTime time.Time, isNx bool) {
+func (d *DocumentationGenerator) WriteHeader(
+	projectName string,
+	currentTime time.Time,
+	isNx bool,
+	projectType string,
+	subType string,
+) {
 	d.file.WriteString(fmt.Sprintf("# Проект: %s\n\n", projectName))
 	d.file.WriteString(fmt.Sprintf("**Дата генерации:** %s\n\n", currentTime.Format("2006-01-02 15:04:05")))
 	d.file.WriteString("**Полнота:** Полная документация проекта\n\n")
@@ -35,7 +41,13 @@ func (d *DocumentationGenerator) WriteHeader(projectName string, currentTime tim
 	if isNx {
 		d.file.WriteString("**Тип:** NX Monorepo\n\n")
 	} else {
-		d.file.WriteString("**Тип:** Стандартный проект\n\n")
+		typeDescription := "Стандартный проект"
+		if subType != "" {
+			typeDescription = subType
+		} else if projectType != "" {
+			typeDescription = strings.ToUpper(projectType[:1]) + projectType[1:] + " проект"
+		}
+		d.file.WriteString(fmt.Sprintf("**Тип:** %s\n\n", typeDescription))
 	}
 
 	d.file.WriteString("## Содержание\n")
@@ -157,7 +169,6 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 	}
 	var nodes []treeNode
 
-	// Собираем все элементы (директории и файлы)
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -188,19 +199,16 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 		return nil
 	})
 
-	// Сортируем узлы по полному пути
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].path < nodes[j].path
 	})
 
-	// Строим карту родительских директорий с путями в едином формате
 	childrenMap := make(map[string][]treeNode)
 	for _, node := range nodes {
 		parent := filepath.ToSlash(filepath.Dir(node.path))
 		childrenMap[parent] = append(childrenMap[parent], node)
 	}
 
-	// Рекурсивная функция для построения дерева
 	var buildTree func(parent string, prefix string)
 	buildTree = func(parent string, prefix string) {
 		children, exists := childrenMap[parent]
@@ -218,7 +226,6 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			}
 		}
 
-		// Сортировка: сначала директории, потом файлы
 		sort.Slice(dirs, func(i, j int) bool {
 			return dirs[i].path < dirs[j].path
 		})
@@ -226,7 +233,6 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 			return files[i].path < files[j].path
 		})
 
-		// Объединяем: сначала все директории, потом все файлы
 		sortedChildren := append(dirs, files...)
 
 		for i, child := range sortedChildren {
@@ -261,20 +267,18 @@ func (d *DocumentationGenerator) GenerateProjectTree(root, basePath string) stri
 }
 
 func shouldExcludeFromTree(relPath string, info os.FileInfo) bool {
-	// Проверяем каждый компонент пути
 	parts := strings.Split(relPath, "/")
 	for _, part := range parts {
-		// Пропускаем скрытые файлы/папки (начинающиеся с точки)
 		if strings.HasPrefix(part, ".") && part != "." && part != ".." {
 			return true
 		}
 	}
 
-	// Системные и временные файлы
 	excludePatterns := []string{
 		".git", ".vscode", ".idea", "node_modules", "dist", "build",
 		".angular", ".nx", "coverage", "__pycache__", "bin", "obj",
-		"project_documentation", "project_structure.txt",
+		"project_documentation", "project_structure.txt", "target", "out",
+		"__tests__", "__snapshots__", ".next", ".nuxt", ".cache", "cypress",
 	}
 
 	for _, pattern := range excludePatterns {

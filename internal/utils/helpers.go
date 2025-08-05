@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type NxProject struct {
@@ -12,8 +14,17 @@ type NxProject struct {
 	SourceDir string
 }
 
-// Добавляем проверку на корневой project.json
 func IsNxMonorepo(rootDir string) bool {
+	goModPath := filepath.Join(rootDir, "go.mod")
+	pkgJsonPath := filepath.Join(rootDir, "package.json")
+
+	_, goModExists := os.Stat(goModPath)
+	_, pkgJsonExists := os.Stat(pkgJsonPath)
+
+	if goModExists == nil && pkgJsonExists == nil {
+		return false
+	}
+
 	nxFiles := []string{"nx.json", "workspace.json"}
 	for _, file := range nxFiles {
 		if _, err := os.Stat(filepath.Join(rootDir, file)); err == nil {
@@ -139,4 +150,21 @@ func ScanStandardProject(
 		processFile(relPath, lang, content)
 		return nil
 	})
+}
+
+func ContainsJSFiles(rootDir string) bool {
+	jsFound := false
+	filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext == ".js" || ext == ".ts" || ext == ".jsx" || ext == ".tsx" {
+			jsFound = true
+			return io.EOF
+		}
+		return nil
+	})
+	return jsFound
 }

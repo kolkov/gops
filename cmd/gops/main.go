@@ -25,7 +25,11 @@ func main() {
 	projectScanner := scanner.NewProjectScanner(rootDir, outputFile)
 
 	if err := projectScanner.InitializeScanner(); err != nil {
-		fmt.Printf("Ошибка инициализации сканера: %v\n", err)
+		fmt.Printf("\nОшибка инициализации сканера: %v\n", err)
+		fmt.Println("Возможные решения:")
+		fmt.Println("1. Удалите ненужный файл (go.mod или package.json)")
+		fmt.Println("2. Запустите сканер в правильной директории проекта")
+		fmt.Println("3. Для смешанных проектов используйте отдельные директории")
 		return
 	}
 
@@ -36,5 +40,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\nДокументация сохранена в %s\n", outputFile)
+	fmt.Printf("\nДокументация успешно сохранена в %s\n", outputFile)
 }

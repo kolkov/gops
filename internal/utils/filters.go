@@ -10,10 +10,11 @@ func ShouldSkipDir(name string) bool {
 	skipDirs := []string{
 		"vendor", "node_modules", ".git", ".vscode", ".idea", "dist",
 		"build", "__pycache__", "bin", "obj", "testdata", "coverage",
-		".angular", ".nx",
+		".angular", ".nx", "target", "out", "__tests__", "__snapshots__",
+		".next", ".nuxt", ".cache", "cypress", "e2e", "coverage",
 	}
 	for _, dir := range skipDirs {
-		if name == dir {
+		if strings.EqualFold(name, dir) {
 			return true
 		}
 	}
@@ -23,8 +24,8 @@ func ShouldSkipDir(name string) bool {
 func ShouldIncludeFile(name string) bool {
 	fileExt := filepath.Ext(name)
 	includeExtensions := []string{
-		".go", ".ts", ".html", ".scss", ".css",
-		".json", ".yaml", ".yml", ".md", ".mod", ".sum",
+		".go", ".ts", ".js", ".jsx", ".tsx", ".html", ".scss", ".css",
+		".json", ".yaml", ".yml", ".md", ".mod", ".sum", ".mjs", ".cjs",
 	}
 
 	for _, ext := range includeExtensions {
@@ -34,7 +35,7 @@ func ShouldIncludeFile(name string) bool {
 	}
 
 	includeFiles := []string{
-		"go.mod", "go.sum", "angular.json",
+		"go.mod", "go.sum", "angular.json", "nx.json",
 		"package.json", "tsconfig.json", "project.json",
 	}
 
@@ -62,11 +63,18 @@ func IsGeneratedFile(filename, currentOutput string) bool {
 }
 
 func GetFileLanguage(path string) string {
-	switch filepath.Ext(path) {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".js", ".mjs", ".cjs":
+		return "javascript"
+	case ".jsx":
+		return "jsx"
+	case ".ts":
+		return "typescript"
+	case ".tsx":
+		return "tsx"
 	case ".mod", ".sum":
 		return "mod"
-	case ".ts", ".tsx":
-		return "typescript"
 	case ".html", ".htm":
 		return "html"
 	case ".scss", ".sass":
