@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"project_scanner/internal/projecttype"
 	"project_scanner/internal/utils"
 )
 
@@ -45,7 +46,17 @@ func (d *DocumentationGenerator) WriteHeader(
 		if subType != "" {
 			typeDescription = subType
 		} else if projectType != "" {
-			typeDescription = strings.ToUpper(projectType[:1]) + projectType[1:] + " проект"
+			if projectType == projecttype.Go {
+				typeDescription = "Go проект"
+			} else if projectType == projecttype.JS {
+				typeDescription = "JavaScript проект"
+			} else if projectType == projecttype.Angular {
+				typeDescription = "Angular проект"
+			} else if projectType == projecttype.BrowserExtension {
+				typeDescription = "Browser Extension"
+			} else {
+				typeDescription = strings.ToUpper(projectType[:1]) + projectType[1:] + " проект"
+			}
 		}
 		d.file.WriteString(fmt.Sprintf("**Тип:** %s\n\n", typeDescription))
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"project_scanner/internal/markdown"
+	"project_scanner/internal/projecttype"
 	"project_scanner/internal/utils"
 )
 
@@ -71,23 +72,22 @@ func (s *ProjectScanner) Scan(docGenerator *markdown.DocumentationGenerator) err
 	if s.hasConflictingFiles() {
 		return fmt.Errorf("обнаружены оба файла: go.mod и package.json. Сканирование невозможно")
 	}
-
-	//projectName := filepath.Base(s.rootDir)
+	
 	var subType string
 
 	switch s.projectType {
-	case "nx":
+	case projecttype.NxMonorepo:
 		subType = "NX Monorepo"
 		return s.scanNxMonorepo(docGenerator)
-	case "js", "angular", "browser-extension":
+	case projecttype.JS, projecttype.Angular, projecttype.BrowserExtension:
 		subType = strings.ToUpper(s.projectType[:1]) + s.projectType[1:]
 		return s.scanJSProject(docGenerator, subType)
-	case "go":
+	case projecttype.Go:
 		subType = "Go"
 		return s.scanStandardProject(docGenerator)
 	default:
 		if utils.ContainsJSFiles(s.rootDir) {
-			s.projectType = "js"
+			s.projectType = projecttype.JS
 			subType = "JavaScript (автоопределение)"
 			return s.scanJSProject(docGenerator, subType)
 		}
@@ -118,7 +118,10 @@ func (s *ProjectScanner) InitializeScanner() error {
 		return err
 	}
 
-	if s.projectType == "js" || s.projectType == "angular" || s.projectType == "browser-extension" || s.projectType == "nx" {
+	if s.projectType == projecttype.JS ||
+		s.projectType == projecttype.Angular ||
+		s.projectType == projecttype.BrowserExtension ||
+		s.projectType == projecttype.NxMonorepo {
 		rootPkgPath := filepath.Join(s.rootDir, "package.json")
 		if _, err := os.Stat(rootPkgPath); err == nil {
 			s.hasRootPackage = true
@@ -142,7 +145,7 @@ func (s *ProjectScanner) detectProjectType() error {
 
 	// Приоритет 1: Nx Monorepo
 	if utils.IsNxMonorepo(s.rootDir) {
-		s.projectType = "nx"
+		s.projectType = projecttype.NxMonorepo
 		s.nxMonorepo = true
 		s.nxProjects = utils.ParseNxProjects(s.rootDir)
 		return nil
@@ -150,27 +153,27 @@ func (s *ProjectScanner) detectProjectType() error {
 
 	// Приоритет 2: Специфичные типы проектов
 	if s.isBrowserExtension() {
-		s.projectType = "browser-extension"
+		s.projectType = projecttype.BrowserExtension
 		return nil
 	}
 
 	if s.isAngularProject() {
-		s.projectType = "angular"
+		s.projectType = projecttype.Angular
 		return nil
 	}
 
 	// Приоритет 3: Общие типы проектов
 	if pkgJsonExists == nil {
-		s.projectType = "js"
+		s.projectType = projecttype.JS
 		return nil
 	}
 
 	if goModExists == nil {
-		s.projectType = "go"
+		s.projectType = projecttype.Go
 		return nil
 	}
 
-	s.projectType = "unknown"
+	s.projectType = projecttype.Unknown
 	return nil
 }
 
@@ -216,9 +219,9 @@ func (s *ProjectScanner) scanJSProject(docGenerator *markdown.DocumentationGener
 	s.processMandatoryJSFiles(docGenerator)
 
 	switch s.projectType {
-	case "browser-extension":
+	case projecttype.BrowserExtension:
 		return s.scanBrowserExtension(docGenerator)
-	case "angular":
+	case projecttype.Angular:
 		return s.scanAngularProject(docGenerator)
 	default:
 		return s.scanGenericJSProject(docGenerator)
@@ -336,7 +339,7 @@ func (s *ProjectScanner) scanGenericJSProject(docGenerator *markdown.Documentati
 }
 
 func (s *ProjectScanner) scanNxMonorepo(docGenerator *markdown.DocumentationGenerator) error {
-	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), true, "nx", "NX Monorepo")
+	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), true, projecttype.NxMonorepo, "NX Monorepo")
 	docGenerator.WriteNxStructure(s.nxProjects)
 
 	if s.IncludeRootPackage && s.hasRootPackage {
@@ -460,7 +463,7 @@ func (s *ProjectScanner) shouldSkipFileContent(filePath string) bool {
 }
 
 func (s *ProjectScanner) scanStandardProject(docGenerator *markdown.DocumentationGenerator) error {
-	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), false, "go", "Go проект")
+	docGenerator.WriteHeader(filepath.Base(s.rootDir), time.Now(), false, projecttype.Go, "Go проект")
 	docGenerator.WriteStandardProjectTree(s.rootDir)
 	docGenerator.WriteModulesHeader()
 
