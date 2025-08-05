@@ -22,6 +22,11 @@ func ShouldSkipDir(name string) bool {
 }
 
 func ShouldIncludeFile(name string) bool {
+	// Явное исключение lock-файлов
+	if name == "package-lock.json" || name == "yarn.lock" {
+		return false
+	}
+
 	fileExt := filepath.Ext(name)
 	includeExtensions := []string{
 		".go", ".ts", ".js", ".jsx", ".tsx", ".html", ".scss", ".css",

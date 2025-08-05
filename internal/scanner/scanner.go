@@ -72,7 +72,7 @@ func (s *ProjectScanner) Scan(docGenerator *markdown.DocumentationGenerator) err
 	if s.hasConflictingFiles() {
 		return fmt.Errorf("обнаружены оба файла: go.mod и package.json. Сканирование невозможно")
 	}
-	
+
 	var subType string
 
 	switch s.projectType {
@@ -229,36 +229,36 @@ func (s *ProjectScanner) scanJSProject(docGenerator *markdown.DocumentationGener
 }
 
 func (s *ProjectScanner) processMandatoryJSFiles(docGenerator *markdown.DocumentationGenerator) {
-	mandatoryFiles := []string{"package.json"}
+	// Обрабатываем только package.json
 	if s.IncludeRootPackage && s.hasRootPackage {
-		mandatoryFiles = append(mandatoryFiles, "package-lock.json", "yarn.lock")
-	}
-
-	for _, file := range mandatoryFiles {
-		filePath := filepath.Join(s.rootDir, file)
+		filePath := filepath.Join(s.rootDir, "package.json")
 		if _, err := os.Stat(filePath); err == nil {
 			content, err := os.ReadFile(filePath)
 			if err == nil {
 				lang := "json"
-				docGenerator.WriteFileSection(file, content, lang, false)
+				docGenerator.WriteFileSection("package.json", content, lang, false)
 			}
 		}
 	}
 }
 
 func (s *ProjectScanner) scanBrowserExtension(docGenerator *markdown.DocumentationGenerator) error {
-	extensionFiles := []string{"manifest.json", "background.js", "content-script.js"}
+	var extensionFiles []string
+	processed := make(map[string]bool)
 
 	for _, file := range extensionFiles {
 		filePath := filepath.Join(s.rootDir, file)
-		if _, err := os.Stat(filePath); err == nil {
-			content, err := os.ReadFile(filePath)
-			if err == nil {
-				lang := "json"
-				if strings.HasSuffix(file, ".js") {
-					lang = "javascript"
+		if _, exists := processed[filePath]; !exists {
+			if _, err := os.Stat(filePath); err == nil {
+				content, err := os.ReadFile(filePath)
+				if err == nil {
+					lang := "json"
+					if strings.HasSuffix(file, ".js") {
+						lang = "javascript"
+					}
+					docGenerator.WriteFileSection(file, content, lang, false)
+					processed[filePath] = true
 				}
-				docGenerator.WriteFileSection(file, content, lang, false)
 			}
 		}
 	}
@@ -287,9 +287,19 @@ func (s *ProjectScanner) scanAngularProject(docGenerator *markdown.Documentation
 }
 
 func (s *ProjectScanner) scanGenericJSProject(docGenerator *markdown.DocumentationGenerator) error {
+	rootPackagePath := filepath.Join(s.rootDir, "package.json")
+
 	return filepath.Walk(s.rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Явно пропускаем package-lock.json и дубликаты package.json
+		if info.Name() == "package-lock.json" || info.Name() == "yarn.lock" {
+			return nil
+		}
+		if path == rootPackagePath && s.IncludeRootPackage {
+			return nil // Уже обработан в mandatory files
 		}
 
 		if info.IsDir() {
