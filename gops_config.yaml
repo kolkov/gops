@@ -1,0 +1,17 @@
+scanner:
+  max_file_size: 2097152    # 2MB
+  include_tests: false
+  include_configs: true
+  include_markup: false
+  include_styles: false
+  excluded_patterns:
+    - "*.lock"
+    - "*.log"
+    - ".git*"
+  parallel_workers: 8
+  timeout: 10m
+
+output:
+  format: markdown
+  filename: "project_docs.md"
+  append_timestamp: true
