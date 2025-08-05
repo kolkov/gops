@@ -46,6 +46,9 @@ func (s *NxScanner) Scan(ctx context.Context, docGen docgen.Generator) error {
 		return fmt.Errorf("no projects selected for scanning")
 	}
 
+	// Запрос на включение важных файлов
+	s.askForImportantFiles()
+
 	rootFiles, err := s.getRootFiles()
 	if err != nil {
 		s.logger.Error("Failed to get root files", err)
@@ -88,6 +91,38 @@ func (s *NxScanner) Scan(ctx context.Context, docGen docgen.Generator) error {
 	return nil
 }
 
+func (s *NxScanner) askForImportantFiles() {
+	importantFiles := []string{
+		"package.json",
+		"nx.json",
+		"project.json",
+	}
+
+	fmt.Println("\nВключить важные конфигурационные файлы?")
+	fmt.Println("1. package.json (общая конфигурация проекта)")
+	fmt.Println("2. nx.json (конфигурация Nx Monorepo)")
+	fmt.Println("3. project.json (конфигурация приложения)")
+	fmt.Println("0. Не включать (по умолчанию)")
+	fmt.Print("Выберите файлы через запятую (например, 1,2,3): ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	input := strings.TrimSpace(scanner.Text())
+
+	if input == "" {
+		return
+	}
+
+	choices := strings.Split(input, ",")
+	for _, choice := range choices {
+		idx, err := strconv.Atoi(strings.TrimSpace(choice))
+		if err != nil || idx < 1 || idx > len(importantFiles) {
+			continue
+		}
+		s.cfg.ImportantFiles = append(s.cfg.ImportantFiles, importantFiles[idx-1])
+	}
+}
+
 func (s *NxScanner) getRootFiles() ([]string, error) {
 	files, err := os.ReadDir(s.rootDir)
 	if err != nil {
@@ -101,12 +136,10 @@ func (s *NxScanner) getRootFiles() ([]string, error) {
 		}
 		name := file.Name()
 
-		// Добавляем проверку исключений из конфига
-		if shouldSkipFile(name, s.cfg.OutputConfigFilename, s.cfg.OutputFilename, s.cfg.ExcludedPatterns) {
+		if filesystem.ShouldSkipFile(name, s.cfg.OutputConfigFilename, s.cfg.OutputFilename, s.cfg.ExcludedPatterns, s.cfg.ImportantFiles) {
 			continue
 		}
 
-		// Проверяем шаблоны исключений
 		skip := false
 		for _, pattern := range s.cfg.ExcludedPatterns {
 			if matched, _ := filepath.Match(pattern, name); matched {
@@ -121,35 +154,6 @@ func (s *NxScanner) getRootFiles() ([]string, error) {
 		rootFiles = append(rootFiles, name)
 	}
 	return rootFiles, nil
-}
-
-// Добавляем вспомогательную функцию
-func shouldSkipFile(name, outputConfigFilename, outputFilename string, excludedPatterns []string) bool {
-	if name == filepath.Base(outputFilename) {
-		return true
-	}
-
-	if strings.HasPrefix(name, outputConfigFilename) && strings.HasSuffix(name, ".md") {
-		return true
-	}
-
-	systemExcludes := []string{
-		"go.sum",
-		"package-lock.json",
-		"yarn.lock",
-		"pnpm-lock.yaml",
-	}
-	for _, excl := range systemExcludes {
-		if name == excl {
-			return true
-		}
-	}
-
-	if strings.HasPrefix(name, "~$") {
-		return true
-	}
-
-	return false
 }
 
 func (s *NxScanner) selectProjects() []*model.NxProject {
@@ -194,7 +198,7 @@ func (s *NxScanner) filterProjects(input string) []*model.NxProject {
 }
 
 func (s *NxScanner) loadProjects() error {
-	projectDirs := []string{"apps", "libs", "tools"}
+	projectDirs := []string{"apps", "libs", "tools", "packages"}
 	for _, dir := range projectDirs {
 		fullPath := filepath.Join(s.rootDir, dir)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {

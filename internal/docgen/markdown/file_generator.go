@@ -2,6 +2,9 @@ package markdown
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
+
 	"github.com/kolkov/gops/internal/model"
 )
 
@@ -14,7 +17,17 @@ func (g *Generator) WriteFileSection(file *model.ProjectFile) {
 		return
 	}
 
-	g.file.WriteString(fmt.Sprintf("```%s\n", file.Lang))
+	// Определяем язык для подсветки синтаксиса
+	lang := file.Lang
+	ext := strings.ToLower(filepath.Ext(file.Path))
+	switch ext {
+	case ".scss", ".sass", ".less":
+		lang = "scss"
+	case ".html", ".htm":
+		lang = "html"
+	}
+
+	g.file.WriteString(fmt.Sprintf("```%s\n", lang))
 	g.file.Write(file.Content)
 	if len(file.Content) > 0 && file.Content[len(file.Content)-1] != '\n' {
 		g.file.WriteString("\n")

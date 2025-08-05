@@ -25,6 +25,11 @@ type ProjectScanner struct {
 }
 
 func NewProjectScanner(rootDir, outputFile string, cfg *config.Config, logger *logger.Logger) *ProjectScanner {
+	// Явное исключение gops_config.yaml
+	if strings.EqualFold(filepath.Base(outputFile), "gops_config.yaml") {
+		logger.Fatal("Cannot use gops_config.yaml as output file", nil)
+	}
+
 	return &ProjectScanner{
 		rootDir:    rootDir,
 		outputFile: outputFile,

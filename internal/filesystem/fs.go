@@ -3,6 +3,7 @@ package filesystem
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +22,10 @@ var bufferPool = sync.Pool{
 }
 
 func ReadFile(path string, maxSize int64) ([]byte, error) {
+	if strings.HasSuffix(strings.ToLower(path), "gops_config.yaml") {
+		return nil, fmt.Errorf("gops config file should be skipped")
+	}
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -48,21 +53,26 @@ func ReadFile(path string, maxSize int64) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Добавляем новую функцию для проверки файлов
-func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedPatterns []string) bool {
-	// Проверка на файлы документации
+func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedPatterns, importantFiles []string) bool {
+	if name == "gops_config.yaml" {
+		return true
+	}
+
+	if name == "go.sum" {
+		return true
+	}
+
 	if name == filepath.Base(outputFilename) {
 		return true
 	}
 
 	baseName := strings.TrimSuffix(outputConfigFilename, filepath.Ext(outputConfigFilename))
-	if strings.HasPrefix(name, baseName) && strings.HasSuffix(name, ".md") {
+	docPattern := baseName + "*.md"
+	if matched, _ := filepath.Match(docPattern, name); matched {
 		return true
 	}
 
-	// Системные исключения
 	systemExcludes := []string{
-		"go.sum",
 		"package-lock.json",
 		"yarn.lock",
 		"pnpm-lock.yaml",
@@ -73,15 +83,19 @@ func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedP
 		}
 	}
 
-	// Временные файлы IDE
 	if strings.HasPrefix(name, "~$") {
 		return true
 	}
 
-	// Проверка шаблонов исключений
 	for _, pattern := range excludedPatterns {
 		if matched, _ := filepath.Match(pattern, name); matched {
 			return true
+		}
+	}
+
+	for _, important := range importantFiles {
+		if name == important {
+			return false
 		}
 	}
 
@@ -112,6 +126,12 @@ func shouldSkipDir(name string, excludedPatterns []string) bool {
 }
 
 func shouldSkipByType(path string, cfg *model.ScanConfig) bool {
+	for _, important := range cfg.ImportantFiles {
+		if strings.HasSuffix(path, important) {
+			return false
+		}
+	}
+
 	ext := strings.ToLower(filepath.Ext(path))
 	fileName := strings.ToLower(filepath.Base(path))
 
@@ -145,7 +165,7 @@ func ScanProject(root string, cfg *model.ScanConfig, logger *logger.Logger, proc
 			return nil
 		}
 
-		if ShouldSkipFile(info.Name(), cfg.OutputConfigFilename, cfg.OutputFilename, cfg.ExcludedPatterns) {
+		if ShouldSkipFile(info.Name(), cfg.OutputConfigFilename, cfg.OutputFilename, cfg.ExcludedPatterns, cfg.ImportantFiles) {
 			return nil
 		}
 
@@ -174,6 +194,18 @@ func processSingleFile(path, root string, cfg *model.ScanConfig) *model.ProjectF
 	file := &model.ProjectFile{
 		Path: relPath,
 		Lang: model.GetFileLanguage(path),
+	}
+
+	for _, important := range cfg.ImportantFiles {
+		if strings.HasSuffix(path, important) {
+			content, err := ReadFile(path, cfg.MaxFileSize)
+			if err != nil {
+				file.Skipped = true
+			} else {
+				file.Content = content
+			}
+			return file
+		}
 	}
 
 	if info, err := os.Stat(path); err == nil && info.Size() > cfg.MaxFileSize {

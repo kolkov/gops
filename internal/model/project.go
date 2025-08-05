@@ -47,6 +47,7 @@ type ScanConfig struct {
 	ParallelWorkers      int
 	OutputFilename       string
 	OutputConfigFilename string
+	ImportantFiles       []string // Новое поле для важных файлов
 }
 
 func GetFileLanguage(path string) string {

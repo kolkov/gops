@@ -77,6 +77,10 @@ func (tb *TreeBuilder) buildTree(parent *treeNode, path string, depth int) error
 		return nil
 	}
 
+	if strings.HasSuffix(strings.ToLower(path), "gops_config.yaml") {
+		return nil
+	}
+
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
@@ -84,6 +88,11 @@ func (tb *TreeBuilder) buildTree(parent *treeNode, path string, depth int) error
 
 	for _, entry := range entries {
 		childPath := filepath.Join(path, entry.Name())
+
+		if strings.EqualFold(entry.Name(), "gops_config.yaml") {
+			continue
+		}
+
 		childNode := &treeNode{
 			name:  entry.Name(),
 			isDir: entry.IsDir(),
@@ -115,7 +124,17 @@ func (tb *TreeBuilder) buildTree(parent *treeNode, path string, depth int) error
 func (tb *TreeBuilder) shouldSkip(path string, entry os.DirEntry) bool {
 	name := entry.Name()
 
-	// Системные исключения (всегда)
+	if strings.EqualFold(name, "gops_config.yaml") {
+		return true
+	}
+
+	// Проверка, является ли файл важным
+	for _, important := range tb.cfg.ImportantFiles {
+		if name == important {
+			return false // Не пропускать важные файлы
+		}
+	}
+
 	systemExcludes := []string{".idea", ".vscode", ".git", "node_modules"}
 	for _, excl := range systemExcludes {
 		if name == excl {
@@ -123,27 +142,33 @@ func (tb *TreeBuilder) shouldSkip(path string, entry os.DirEntry) bool {
 		}
 	}
 
-	// Проверка по шаблонам исключений
 	for _, pattern := range tb.cfg.ExcludedPatterns {
 		if matched, _ := filepath.Match(pattern, name); matched {
 			return true
 		}
 	}
 
-	// Исключение файлов документации
-	if strings.HasPrefix(name, "project_docs") && strings.HasSuffix(name, ".md") {
+	if matched, _ := filepath.Match("project_docs*.md", name); matched {
 		return true
 	}
-	if strings.HasPrefix(name, "project_documentation_") && strings.HasSuffix(name, ".md") {
-		return true
-	}
-	if name == "project_docs.md" {
+	if matched, _ := filepath.Match("project_documentation_*.md", name); matched {
 		return true
 	}
 
-	// Исключение по типу файла (только для файлов)
 	if !entry.IsDir() {
-		// Проверяем настройки сканера
+		// Проверка, является ли файл важным (дополнительная проверка)
+		isImportant := false
+		for _, important := range tb.cfg.ImportantFiles {
+			if name == important {
+				isImportant = true
+				break
+			}
+		}
+
+		if isImportant {
+			return false // Не пропускать важные файлы
+		}
+
 		ext := strings.ToLower(filepath.Ext(path))
 		fileName := strings.ToLower(name)
 
