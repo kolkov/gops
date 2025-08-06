@@ -14,14 +14,27 @@ import (
 
 func TestProjectScanner_Run(t *testing.T) {
 	tmpDir := t.TempDir()
+
+	// Очищаем все файлы после теста
+	defer func() {
+		// Удаляем все .md файлы, созданные во время теста
+		files, _ := filepath.Glob(filepath.Join(tmpDir, "*.md"))
+		for _, file := range files {
+			_ = os.Remove(file)
+		}
+	}()
+
 	log := logger.New(logger.InfoLevel)
 	defer log.Sync()
 
-	// Создаем файлы Go проекта, чтобы детектор определил тип проекта
+	// Создаем файлы Go проекта
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n\nfunc main() {}"), 0644))
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "internal"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "internal", "app.go"), []byte("package internal"), 0644))
+
+	// Используем временный файл для вывода
+	outputFile := filepath.Join(tmpDir, "test_output.md")
 
 	cfg := &config.Config{
 		Scanner: config.ScannerConfig{
@@ -35,12 +48,26 @@ func TestProjectScanner_Run(t *testing.T) {
 		},
 		Output: config.OutputConfig{
 			Format:   "markdown",
-			Filename: "test_output.md",
+			Filename: outputFile, // Используем временный файл
 		},
 	}
 
-	scanner := NewProjectScanner(tmpDir, "test_output.md", cfg, log)
+	// Перенаправляем stdin для избежания интерактивного ввода
+	oldStdin := os.Stdin
+	defer func() { os.Stdin = oldStdin }()
+
+	tmpFile, _ := os.CreateTemp("", "stdin")
+	defer os.Remove(tmpFile.Name())
+	_, _ = tmpFile.WriteString("\n") // Simulate Enter (no additional files)
+	_, _ = tmpFile.Seek(0, 0)
+	os.Stdin = tmpFile
+
+	scanner := NewProjectScanner(tmpDir, outputFile, cfg, log)
 	err := scanner.Run(context.Background())
+	assert.NoError(t, err)
+
+	// Проверяем, что файл создан
+	_, err = os.Stat(outputFile)
 	assert.NoError(t, err)
 }
 
@@ -70,6 +97,8 @@ func TestGenerateOutputFilename(t *testing.T) {
 		filename := GenerateOutputFilename(cfg)
 		assert.Contains(t, filename, "project_docs_")
 		assert.Contains(t, filename, ".md")
+		// Удаляем созданный файл
+		defer os.Remove(filename)
 	})
 
 	t.Run("CustomFilename", func(t *testing.T) {
@@ -88,5 +117,12 @@ func TestGenerateOutputFilename(t *testing.T) {
 		filename := GenerateOutputFilename(cfg)
 		assert.Contains(t, filename, "custom_")
 		assert.Contains(t, filename, ".md")
+		// Удаляем созданный файл
+		defer func() {
+			files, _ := filepath.Glob("custom_*.md")
+			for _, f := range files {
+				_ = os.Remove(f)
+			}
+		}()
 	})
 }
