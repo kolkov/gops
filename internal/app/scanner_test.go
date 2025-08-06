@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
 	"github.com/kolkov/gops/internal/config"
 	"github.com/kolkov/gops/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 func TestProjectScanner_Run(t *testing.T) {
@@ -16,9 +17,11 @@ func TestProjectScanner_Run(t *testing.T) {
 	log := logger.New(logger.InfoLevel)
 	defer log.Sync()
 
-	// Create mock project files to avoid "unsupported project type" error
+	// Создаем файлы Go проекта, чтобы детектор определил тип проекта
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n\nfunc main() {}"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "internal"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "internal", "app.go"), []byte("package internal"), 0644))
 
 	cfg := &config.Config{
 		Scanner: config.ScannerConfig{
@@ -64,7 +67,7 @@ func TestConvertConfig(t *testing.T) {
 func TestGenerateOutputFilename(t *testing.T) {
 	t.Run("DefaultFilename", func(t *testing.T) {
 		cfg := &config.Config{Output: config.OutputConfig{}}
-		filename := GenerateOutputFilename(cfg) // Исправлено на экспортируемую функцию
+		filename := GenerateOutputFilename(cfg)
 		assert.Contains(t, filename, "project_docs_")
 		assert.Contains(t, filename, ".md")
 	})
@@ -73,7 +76,7 @@ func TestGenerateOutputFilename(t *testing.T) {
 		cfg := &config.Config{Output: config.OutputConfig{
 			Filename: "custom.md",
 		}}
-		filename := GenerateOutputFilename(cfg) // Исправлено на экспортируемую функцию
+		filename := GenerateOutputFilename(cfg)
 		assert.Equal(t, "custom.md", filename)
 	})
 
@@ -82,7 +85,7 @@ func TestGenerateOutputFilename(t *testing.T) {
 			Filename:        "custom.md",
 			AppendTimestamp: true,
 		}}
-		filename := GenerateOutputFilename(cfg) // Исправлено на экспортируемую функцию
+		filename := GenerateOutputFilename(cfg)
 		assert.Contains(t, filename, "custom_")
 		assert.Contains(t, filename, ".md")
 	})
