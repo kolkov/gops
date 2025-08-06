@@ -91,6 +91,7 @@ func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedP
 		}
 	}
 
+	// Проверка важных файлов должна переопределять исключения
 	for _, important := range importantFiles {
 		if name == important {
 			return false
