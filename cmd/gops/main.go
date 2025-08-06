@@ -3,14 +3,11 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
-	"log"
-	"path/filepath"
-	"time"
-
 	"github.com/kolkov/gops/internal/app"
 	"github.com/kolkov/gops/internal/config"
 	"github.com/kolkov/gops/pkg/logger"
+	"log"
+	"path/filepath"
 )
 
 func main() {
@@ -37,7 +34,7 @@ func main() {
 		zapLogger.Fatal("Failed to get absolute path", err)
 	}
 
-	outputFile := generateOutputFilename(cfg)
+	outputFile := app.GenerateOutputFilename(cfg)
 
 	scanner := app.NewProjectScanner(
 		absRoot,
@@ -54,18 +51,4 @@ func main() {
 		"file", outputFile,
 		"project", absRoot,
 	)
-}
-
-func generateOutputFilename(cfg *config.Config) string {
-	if cfg.Output.Filename == "" {
-		return fmt.Sprintf("project_docs_%s.md", time.Now().Format("20060102_150405"))
-	}
-
-	if cfg.Output.AppendTimestamp {
-		ext := filepath.Ext(cfg.Output.Filename)
-		base := cfg.Output.Filename[:len(cfg.Output.Filename)-len(ext)]
-		return fmt.Sprintf("%s_%s%s", base, time.Now().Format("20060102_150405"), ext)
-	}
-
-	return cfg.Output.Filename
 }

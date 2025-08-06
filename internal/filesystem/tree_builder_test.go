@@ -1,6 +1,8 @@
 package filesystem
 
 import (
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -322,4 +324,90 @@ func TestTreeBuilder_RenderTree(t *testing.T) {
 	if !strings.Contains(normalizedResult, normalizedExpected) {
 		t.Errorf("Ожидалось:\n%s\n\nПолучено:\n%s", normalizedExpected, normalizedResult)
 	}
+}
+
+func TestTreeBuilder(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Создаем структуру проекта
+	dirs := []string{
+		"src",
+		"src/components",
+		"test",
+		"node_modules",
+	}
+
+	for _, dir := range dirs {
+		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, dir), 0755))
+	}
+
+	files := []string{
+		"src/main.go",
+		"src/components/button.go",
+		"test/main_test.go",
+		"go.mod",
+		"node_modules/module/index.js",
+	}
+
+	for _, file := range files {
+		filePath := filepath.Join(tmpDir, file)
+		require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0755))
+		require.NoError(t, os.WriteFile(filePath, []byte("content"), 0644))
+	}
+
+	cfg := &model.ScanConfig{
+		ExcludedPatterns: []string{"test", "node_modules"}, // Исправлено
+		ImportantFiles:   []string{"go.mod"},
+	}
+
+	t.Run("BuildTree", func(t *testing.T) {
+		builder := NewTreeBuilder(tmpDir, cfg)
+		tree, err := builder.Build()
+		require.NoError(t, err)
+
+		assert.Contains(t, tree, "src/")
+		assert.Contains(t, tree, "go.mod")
+		assert.NotContains(t, tree, "test/")
+		assert.NotContains(t, tree, "node_modules/")
+	})
+
+	t.Run("DirectoryOrder", func(t *testing.T) {
+		// Создаем дополнительные директории
+		newDirs := []string{"b_dir", "a_dir", "c_dir"}
+		for _, dir := range newDirs {
+			require.NoError(t, os.Mkdir(filepath.Join(tmpDir, dir), 0755))
+		}
+
+		builder := NewTreeBuilder(tmpDir, cfg)
+		tree, err := builder.Build()
+		require.NoError(t, err)
+
+		// Проверяем порядок: a_dir, b_dir, c_dir, src, ...
+		aIdx := strings.Index(tree, "a_dir/")
+		bIdx := strings.Index(tree, "b_dir/")
+		cIdx := strings.Index(tree, "c_dir/")
+
+		assert.True(t, aIdx < bIdx && bIdx < cIdx,
+			"Директории должны быть в алфавитном порядке")
+	})
+
+	t.Run("FileOrder", func(t *testing.T) {
+		// Создаем дополнительные файлы
+		newFiles := []string{"b_file.txt", "a_file.txt", "c_file.txt"}
+		for _, file := range newFiles {
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, file), []byte("content"), 0644))
+		}
+
+		builder := NewTreeBuilder(tmpDir, cfg)
+		tree, err := builder.Build()
+		require.NoError(t, err)
+
+		// Проверяем порядок файлов: a_file, b_file, c_file
+		aIdx := strings.Index(tree, "a_file.txt")
+		bIdx := strings.Index(tree, "b_file.txt")
+		cIdx := strings.Index(tree, "c_file.txt")
+
+		assert.True(t, aIdx < bIdx && bIdx < cIdx,
+			"Файлы должны быть в алфавитном порядке")
+	})
 }
