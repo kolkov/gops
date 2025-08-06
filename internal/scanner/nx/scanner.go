@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/kolkov/gops/internal/docgen"
 	"github.com/kolkov/gops/internal/filesystem"
@@ -63,29 +62,11 @@ func (s *NxScanner) Scan(ctx context.Context, docGen docgen.Generator) error {
 	docGen.WriteHeader(meta)
 	docGen.WriteNxStructure(selectedProjects, rootFiles)
 
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(selectedProjects))
-	sem := make(chan struct{}, s.cfg.ParallelWorkers)
-
 	for _, project := range selectedProjects {
-		wg.Add(1)
-		sem <- struct{}{}
-
-		go func(p *model.NxProject) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			if err := s.scanProject(ctx, docGen, p); err != nil {
-				errChan <- fmt.Errorf("project %s: %w", p.Name, err)
-			}
-		}(project)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	for err := range errChan {
-		s.logger.Error("Project scan failed", err)
+		if err := s.scanProject(ctx, docGen, project); err != nil {
+			s.logger.Error("Project scan failed", err)
+			return fmt.Errorf("project %s: %w", project.Name, err)
+		}
 	}
 
 	return nil

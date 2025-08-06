@@ -77,29 +77,29 @@ func (tb *TreeBuilder) buildTree(parent *treeNode, path string, depth int) error
 		return nil
 	}
 
-	if strings.HasSuffix(strings.ToLower(path), "gops_config.yaml") {
-		return nil
-	}
-
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 
+	// Сортируем: сначала директории, потом файлы
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].IsDir() == entries[j].IsDir() {
+			return entries[i].Name() < entries[j].Name()
+		}
+		return entries[i].IsDir() // Директории всегда перед файлами
+	})
+
 	for _, entry := range entries {
 		childPath := filepath.Join(path, entry.Name())
 
-		if strings.EqualFold(entry.Name(), "gops_config.yaml") {
+		if tb.shouldSkip(childPath, entry) {
 			continue
 		}
 
 		childNode := &treeNode{
 			name:  entry.Name(),
 			isDir: entry.IsDir(),
-		}
-
-		if tb.shouldSkip(childPath, entry) {
-			continue
 		}
 
 		if entry.IsDir() {
@@ -111,43 +111,49 @@ func (tb *TreeBuilder) buildTree(parent *treeNode, path string, depth int) error
 		parent.children = append(parent.children, childNode)
 	}
 
-	sort.Slice(parent.children, func(i, j int) bool {
-		if parent.children[i].isDir == parent.children[j].isDir {
-			return parent.children[i].name < parent.children[j].name
-		}
-		return parent.children[i].isDir
-	})
-
 	return nil
 }
 
 func (tb *TreeBuilder) shouldSkip(path string, entry os.DirEntry) bool {
 	name := entry.Name()
 
+	// Всегда пропускать конфигурационный файл gops
 	if strings.EqualFold(name, "gops_config.yaml") {
 		return true
 	}
 
-	// Проверка, является ли файл важным
+	// Проверка важных файлов
 	for _, important := range tb.cfg.ImportantFiles {
 		if name == important {
-			return false // Не пропускать важные файлы
+			return false
 		}
 	}
 
-	systemExcludes := []string{".idea", ".vscode", ".git", "node_modules"}
-	for _, excl := range systemExcludes {
-		if name == excl {
+	// Полный список системных исключений
+	systemExcludes := []string{
+		"node_modules", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+		"go.sum", ".git", ".idea", ".vscode", "dist", "build", "out", "bin", "obj",
+		"__pycache__", ".pytest_cache", "coverage", ".nyc_output", ".angular", ".nx", ".next", ".nuxt",
+		"__tests__", "__snapshots__", "e2e", "*.log", "*.tmp", "*.bak",
+		"*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg", "*.bmp", "*.webp",
+		"project_structure.txt",
+	}
+
+	// Проверка системных исключений по имени
+	for _, pattern := range systemExcludes {
+		if matched, _ := filepath.Match(pattern, name); matched {
 			return true
 		}
 	}
 
+	// Проверка пользовательских исключений
 	for _, pattern := range tb.cfg.ExcludedPatterns {
 		if matched, _ := filepath.Match(pattern, name); matched {
 			return true
 		}
 	}
 
+	// Проверка файлов документации
 	if matched, _ := filepath.Match("project_docs*.md", name); matched {
 		return true
 	}
@@ -155,20 +161,8 @@ func (tb *TreeBuilder) shouldSkip(path string, entry os.DirEntry) bool {
 		return true
 	}
 
+	// Для файлов применяем дополнительные проверки
 	if !entry.IsDir() {
-		// Проверка, является ли файл важным (дополнительная проверка)
-		isImportant := false
-		for _, important := range tb.cfg.ImportantFiles {
-			if name == important {
-				isImportant = true
-				break
-			}
-		}
-
-		if isImportant {
-			return false // Не пропускать важные файлы
-		}
-
 		ext := strings.ToLower(filepath.Ext(path))
 		fileName := strings.ToLower(name)
 

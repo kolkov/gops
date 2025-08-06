@@ -2,7 +2,6 @@ package filesystem
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/kolkov/gops/internal/model"
 	"github.com/kolkov/gops/pkg/logger"
-	"golang.org/x/sync/semaphore"
 )
 
 var bufferPool = sync.Pool{
@@ -150,9 +148,6 @@ func shouldSkipByType(path string, cfg *model.ScanConfig) bool {
 }
 
 func ScanProject(root string, cfg *model.ScanConfig, logger *logger.Logger, processFile func(*model.ProjectFile)) error {
-	sem := semaphore.NewWeighted(int64(cfg.ParallelWorkers))
-	ctx := context.Background()
-
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -169,22 +164,10 @@ func ScanProject(root string, cfg *model.ScanConfig, logger *logger.Logger, proc
 			return nil
 		}
 
-		if err := sem.Acquire(ctx, 1); err != nil {
-			return err
-		}
-
-		go func() {
-			defer sem.Release(1)
-			file := processSingleFile(path, root, cfg)
-			processFile(file)
-		}()
-
+		file := processSingleFile(path, root, cfg)
+		processFile(file)
 		return nil
 	})
-
-	if err := sem.Acquire(ctx, int64(cfg.ParallelWorkers)); err != nil {
-		logger.Error("Failed to acquire semaphore", err)
-	}
 
 	return err
 }
