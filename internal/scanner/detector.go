@@ -116,11 +116,9 @@ func (d *projectDetector) isBrowserExtension() bool {
 }
 
 func (d *projectDetector) isAngularProject() bool {
-	// Angular-специфичные файлы
 	angularFiles := []string{
 		"angular.json",
 		"src/main.ts",
-		"src/app/app.module.ts",
 		"src/index.html",
 	}
 
@@ -130,7 +128,7 @@ func (d *projectDetector) isAngularProject() bool {
 			foundCount++
 		}
 	}
-	return foundCount >= 3
+	return foundCount >= 2 || hasDependency(d.rootDir, "@angular/core")
 }
 
 func (d *projectDetector) isGoProject() bool {
