@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -18,7 +19,7 @@ type ScannerConfig struct {
 	IncludeConfigs   bool     `yaml:"include_configs"`
 	IncludeMarkup    bool     `yaml:"include_markup"`
 	IncludeStyles    bool     `yaml:"include_styles"`
-	IncludeDocs      bool     `yaml:"include_docs"` // ← новое
+	IncludeDocs      bool     `yaml:"include_docs"`
 	ExcludedPatterns []string `yaml:"excluded_patterns"`
 	ParallelWorkers  int      `yaml:"parallel_workers"`
 	Timeout          Duration `yaml:"timeout"`
@@ -27,12 +28,11 @@ type ScannerConfig struct {
 type OutputConfig struct {
 	Format          string `yaml:"format"`
 	Filename        string `yaml:"filename"`
-	AppendTimestamp bool   `yaml:"append_timestamp"` // Новая опция
+	AppendTimestamp bool   `yaml:"append_timestamp"`
 }
 
 type Duration time.Duration
 
-// Исправленная реализация UnmarshalYAML
 func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
@@ -48,6 +48,58 @@ func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// MarshalYAML для корректной сериализации Duration
+func (d Duration) MarshalYAML() (interface{}, error) {
+	return time.Duration(d).String(), nil
+}
+
+// DefaultConfig возвращает конфигурацию по умолчанию
+func DefaultConfig() *Config {
+	return &Config{
+		Scanner: ScannerConfig{
+			MaxFileSize:    2 * 1024 * 1024, // 2MB
+			IncludeTests:   false,
+			IncludeConfigs: true,
+			IncludeMarkup:  true,
+			IncludeStyles:  true,
+			IncludeDocs:    false,
+			ExcludedPatterns: []string{
+				".gitignore",
+				".DS_Store",
+				"Thumbs.db",
+				"*.log",
+				"*.tmp",
+				"*.bak",
+			},
+			ParallelWorkers: 4,
+			Timeout:         Duration(5 * time.Minute),
+		},
+		Output: OutputConfig{
+			Format:          "markdown",
+			Filename:        "project_docs.md",
+			AppendTimestamp: true,
+		},
+	}
+}
+
+// LoadOrDefault загружает конфигурацию из файла или возвращает дефолтную
+func LoadOrDefault(path string) (*Config, bool, error) {
+	// Проверяем существование файла
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// Файл не существует - возвращаем дефолтную конфигурацию
+		return DefaultConfig(), false, nil
+	}
+
+	// Файл существует - загружаем его
+	cfg, err := Load(path)
+	if err != nil {
+		return nil, true, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	return cfg, true, nil
+}
+
+// Load загружает конфигурацию из файла
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -59,34 +111,101 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Set defaults
-	if cfg.Scanner.MaxFileSize == 0 {
-		cfg.Scanner.MaxFileSize = 2 * 1024 * 1024 // 2MB
-	}
-	if cfg.Scanner.ParallelWorkers == 0 {
-		cfg.Scanner.ParallelWorkers = 4
-	}
-	if cfg.Scanner.Timeout == 0 {
-		cfg.Scanner.Timeout = Duration(5 * time.Minute)
-	}
-	if cfg.Output.Format == "" {
-		cfg.Output.Format = "markdown"
-	}
-	if cfg.Output.AppendTimestamp && cfg.Output.Filename == "" {
-		cfg.Output.Filename = "project_docs.md"
-	}
-
-	// Добавляем разумные исключения по умолчанию
-	if len(cfg.Scanner.ExcludedPatterns) == 0 {
-		cfg.Scanner.ExcludedPatterns = []string{
-			".gitignore",
-			".DS_Store",
-			"Thumbs.db",
-			"*.log",
-			"*.tmp",
-			"*.bak",
-		}
-	}
+	// Применяем дефолтные значения для незаполненных полей
+	applyDefaults(&cfg)
 
 	return &cfg, nil
+}
+
+// applyDefaults применяет дефолтные значения для незаполненных полей
+func applyDefaults(cfg *Config) {
+	defaults := DefaultConfig()
+
+	if cfg.Scanner.MaxFileSize == 0 {
+		cfg.Scanner.MaxFileSize = defaults.Scanner.MaxFileSize
+	}
+	if cfg.Scanner.ParallelWorkers == 0 {
+		cfg.Scanner.ParallelWorkers = defaults.Scanner.ParallelWorkers
+	}
+	if cfg.Scanner.Timeout == 0 {
+		cfg.Scanner.Timeout = defaults.Scanner.Timeout
+	}
+	if cfg.Output.Format == "" {
+		cfg.Output.Format = defaults.Output.Format
+	}
+	if cfg.Output.AppendTimestamp && cfg.Output.Filename == "" {
+		cfg.Output.Filename = defaults.Output.Filename
+	}
+
+	// Добавляем разумные исключения по умолчанию если их нет
+	if len(cfg.Scanner.ExcludedPatterns) == 0 {
+		cfg.Scanner.ExcludedPatterns = defaults.Scanner.ExcludedPatterns
+	}
+}
+
+// Save сохраняет конфигурацию в файл
+func Save(cfg *Config, path string) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// CreateSampleConfig создает пример конфигурационного файла
+func CreateSampleConfig(path string) error {
+	sampleConfig := `# GOPS Configuration File
+# Documentation generator for projects
+
+scanner:
+  # Maximum file size to process (in bytes)
+  max_file_size: 2097152  # 2MB
+  
+  # Include test files in documentation
+  include_tests: false
+  
+  # Include configuration files
+  include_configs: true
+  
+  # Include markup files (HTML, etc.)
+  include_markup: true
+  
+  # Include style files (CSS, SCSS, etc.)
+  include_styles: true
+  
+  # Include documentation files (*.md)
+  include_docs: false
+  
+  # Patterns to exclude from scanning
+  excluded_patterns:
+    - ".gitignore"
+    - ".DS_Store"
+    - "Thumbs.db"
+    - "*.log"
+    - "*.tmp"
+    - "*.bak"
+  
+  # Number of parallel workers for scanning
+  parallel_workers: 4
+  
+  # Timeout for scanning operation
+  timeout: 5m
+
+output:
+  # Output format (markdown, html)
+  format: markdown
+  
+  # Base filename for output
+  filename: project_docs.md
+  
+  # Append timestamp to filename
+  append_timestamp: true
+`
+
+	return os.WriteFile(path, []byte(sampleConfig), 0644)
 }
