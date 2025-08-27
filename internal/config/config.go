@@ -8,6 +8,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Константы для режимов выбора
+const (
+	SelectionModeAll         = "all"         // Включить все файлы (текущее поведение)
+	SelectionModeInteractive = "interactive" // Интерактивный выбор
+	SelectionModePatterns    = "patterns"    // По паттернам из конфига
+	SelectionModeList        = "list"        // По списку путей из конфига
+)
+
 type Config struct {
 	Scanner ScannerConfig `yaml:"scanner"`
 	Output  OutputConfig  `yaml:"output"`
@@ -23,6 +31,11 @@ type ScannerConfig struct {
 	ExcludedPatterns []string `yaml:"excluded_patterns"`
 	ParallelWorkers  int      `yaml:"parallel_workers"`
 	Timeout          Duration `yaml:"timeout"`
+
+	// Поля для выборочного включения файлов
+	SelectionMode   string   `yaml:"selection_mode"`   // Режим выбора файлов
+	IncludedPaths   []string `yaml:"included_paths"`   // Конкретные пути для включения
+	IncludePatterns []string `yaml:"include_patterns"` // Паттерны для включения
 }
 
 type OutputConfig struct {
@@ -48,7 +61,6 @@ func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// MarshalYAML для корректной сериализации Duration
 func (d Duration) MarshalYAML() (interface{}, error) {
 	return time.Duration(d).String(), nil
 }
@@ -73,6 +85,9 @@ func DefaultConfig() *Config {
 			},
 			ParallelWorkers: 4,
 			Timeout:         Duration(5 * time.Minute),
+			SelectionMode:   SelectionModeAll, // По умолчанию включаем все файлы
+			IncludedPaths:   []string{},
+			IncludePatterns: []string{},
 		},
 		Output: OutputConfig{
 			Format:          "markdown",
@@ -136,6 +151,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Output.AppendTimestamp && cfg.Output.Filename == "" {
 		cfg.Output.Filename = defaults.Output.Filename
 	}
+	if cfg.Scanner.SelectionMode == "" {
+		cfg.Scanner.SelectionMode = defaults.Scanner.SelectionMode
+	}
 
 	// Добавляем разумные исключения по умолчанию если их нет
 	if len(cfg.Scanner.ExcludedPatterns) == 0 {
@@ -195,6 +213,19 @@ scanner:
   
   # Timeout for scanning operation
   timeout: 5m
+  
+  # File selection mode: all, interactive, patterns, list
+  selection_mode: all
+  
+  # Specific paths to include (when selection_mode is "list")
+  # included_paths:
+  #   - "src/core"
+  #   - "src/features"
+  
+  # Patterns to include (when selection_mode is "patterns")
+  # include_patterns:
+  #   - "src/**/*.service.ts"
+  #   - "src/**/*.component.ts"
 
 output:
   # Output format (markdown, html)
@@ -208,4 +239,14 @@ output:
 `
 
 	return os.WriteFile(path, []byte(sampleConfig), 0644)
+}
+
+// ValidateSelectionMode проверяет корректность режима выбора
+func ValidateSelectionMode(mode string) bool {
+	switch mode {
+	case SelectionModeAll, SelectionModeInteractive, SelectionModePatterns, SelectionModeList:
+		return true
+	default:
+		return false
+	}
 }

@@ -49,14 +49,13 @@ func ReadFile(path string, maxSize int64) ([]byte, error) {
 	}
 
 	// ВАЖНО: Возвращаем КОПИЮ байтов, а не ссылку на буфер!
-	// Буфер будет переиспользован для следующего файла
 	result := make([]byte, buf.Len())
 	copy(result, buf.Bytes())
 	return result, nil
 }
 
 func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedPatterns, importantFiles []string) bool {
-	if name == "gops_config.yaml" {
+	if strings.HasPrefix(name, "gops_config") {
 		return true
 	}
 
@@ -152,29 +151,75 @@ func shouldSkipByType(path string, cfg *model.ScanConfig) bool {
 	}
 }
 
+// ScanProject сканирует проект с учетом настроек выбора файлов
 func ScanProject(root string, cfg *model.ScanConfig, logger *logger.Logger, processFile func(*model.ProjectFile)) error {
+	// Если есть режим выбора файлов, показываем информацию
+	if cfg.HasFileSelection() {
+		logger.Info("Using file selection mode",
+			"mode", cfg.SelectionMode,
+			"files", cfg.GetSelectedFilesCount())
+	}
+
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if info.IsDir() {
+			// Для режима выбора файлов, проверяем нужна ли эта директория
+			if cfg.HasFileSelection() {
+				relPath, _ := filepath.Rel(root, path)
+
+				// Проверяем, есть ли выбранные файлы в этой директории
+				hasSelectedFiles := false
+				for _, includedPath := range cfg.IncludedPaths {
+					if strings.HasPrefix(includedPath, relPath+string(os.PathSeparator)) || includedPath == relPath {
+						hasSelectedFiles = true
+						break
+					}
+				}
+
+				// Пропускаем директорию если в ней нет выбранных файлов
+				if !hasSelectedFiles && cfg.SelectionMode == "list" {
+					return filepath.SkipDir
+				}
+			}
+
+			// Обычная проверка на пропуск директорий
 			if shouldSkipDir(info.Name(), cfg.ExcludedPatterns) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
+		// Проверка на пропуск файла по имени
 		if ShouldSkipFile(info.Name(), cfg.OutputConfigFilename, cfg.OutputFilename, cfg.ExcludedPatterns, cfg.ImportantFiles) {
 			return nil
 		}
 
-		file := processSingleFile(path, root, cfg)
-		processFile(file)
+		// Обрабатываем файл с учетом режима выбора
+		file := processSingleFileWithSelection(path, root, cfg)
+		if file != nil {
+			processFile(file)
+		}
 		return nil
 	})
 
 	return err
+}
+
+// processSingleFileWithSelection обрабатывает файл с учетом режима выбора
+func processSingleFileWithSelection(path, root string, cfg *model.ScanConfig) *model.ProjectFile {
+	relPath, _ := filepath.Rel(root, path)
+
+	// Проверяем, включен ли файл в выборку
+	if cfg.HasFileSelection() && !cfg.IsFileIncluded(relPath) {
+		// Файл не выбран - пропускаем его
+		return nil
+	}
+
+	// Дальше стандартная обработка
+	return processSingleFile(path, root, cfg)
 }
 
 func processSingleFile(path, root string, cfg *model.ScanConfig) *model.ProjectFile {
@@ -214,4 +259,31 @@ func processSingleFile(path, root string, cfg *model.ScanConfig) *model.ProjectF
 
 	file.Content = content
 	return file
+}
+
+// CountSelectedFiles подсчитывает количество файлов, которые будут включены
+func CountSelectedFiles(root string, cfg *model.ScanConfig) (int, error) {
+	count := 0
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+
+		relPath, _ := filepath.Rel(root, path)
+
+		// Пропускаем системные файлы
+		if ShouldSkipFile(info.Name(), cfg.OutputConfigFilename, cfg.OutputFilename, cfg.ExcludedPatterns, cfg.ImportantFiles) {
+			return nil
+		}
+
+		// Проверяем включен ли файл
+		if !cfg.HasFileSelection() || cfg.IsFileIncluded(relPath) {
+			count++
+		}
+
+		return nil
+	})
+
+	return count, err
 }

@@ -1,18 +1,25 @@
 scanner:
-  max_file_size: 2097152    # 2MB
-  include_tests: false
-  include_configs: true
-  include_markup: false
-  include_styles: false
-  include_docs: false   # по умолчанию
-  excluded_patterns:
-    - "*.lock"
-    - "*.log"
-    - ".git*"
-  parallel_workers: 8
-  timeout: 10m
-
+    max_file_size: 2097152
+    include_tests: true
+    include_configs: true
+    include_markup: false
+    include_styles: false
+    include_docs: false
+    excluded_patterns:
+        - .gitignore
+        - .DS_Store
+        - Thumbs.db
+        - '*.log'
+        - '*.tmp'
+        - '*.bak'
+        - vendor/**
+        - '*.exe'
+        - '*.dll'
+        - '*.so'
+        - '*.dylib'
+    parallel_workers: 4
+    timeout: 5m0s
 output:
-  format: markdown
-  filename: "project_docs.md"
-  append_timestamp: true
+    format: markdown
+    filename: project_docs.md
+    append_timestamp: true
