@@ -82,3 +82,8 @@ scanner:
 		assert.Error(t, err)
 	})
 }
+
+func TestIncludeDocsDefaultFalse(t *testing.T) {
+	cfg := ScannerConfig{}
+	assert.False(t, cfg.IncludeDocs)
+}

@@ -14,6 +14,7 @@ type Generator interface {
 	WriteProjectHeader(name, ptype, root string)
 	WriteProjectTree(structure string)
 	WriteModulesHeader()
+	WriteRootConfigHeader() // НОВЫЙ МЕТОД
 	Close() error
 }
 

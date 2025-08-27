@@ -3,11 +3,11 @@ module github.com/kolkov/gops
 go 1.24.5
 
 require (
-	go.uber.org/zap v1.26.0
+	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/stretchr/testify v1.8.4
+require github.com/stretchr/testify v1.11.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

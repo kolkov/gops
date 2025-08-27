@@ -37,6 +37,7 @@ output:
 			validate: func(cfg *Config) {
 				assert.Equal(s.T(), int64(2*1024*1024), cfg.Scanner.MaxFileSize)
 				assert.Equal(s.T(), 4, cfg.Scanner.ParallelWorkers)
+				assert.False(s.T(), cfg.Scanner.IncludeDocs) // default
 			},
 		},
 		{
@@ -47,6 +48,7 @@ output:
   include_configs: true
   include_markup: true
   include_styles: false
+  include_docs: true
   excluded_patterns:
     - "*.tmp"
     - "__cache__/*"
@@ -60,6 +62,18 @@ output:
 			validate: func(cfg *Config) {
 				assert.Equal(s.T(), int64(5242880), cfg.Scanner.MaxFileSize)
 				assert.Equal(s.T(), 8, cfg.Scanner.ParallelWorkers)
+				assert.True(s.T(), cfg.Scanner.IncludeDocs) // explicitly enabled
+			},
+		},
+		{
+			name: "IncludeDocs enabled",
+			configYAML: `scanner:
+  include_docs: true
+output:
+  format: markdown`,
+			expectError: false,
+			validate: func(cfg *Config) {
+				assert.True(s.T(), cfg.Scanner.IncludeDocs)
 			},
 		},
 		{

@@ -86,13 +86,17 @@ func (s *GoScanner) askForImportantFiles() {
 	scanner.Scan()
 	input := strings.TrimSpace(scanner.Text())
 
-	if input == "" {
+	if input == "" || input == "0" {
 		return
 	}
 
 	choices := strings.Split(input, ",")
 	for _, choice := range choices {
-		idx, err := strconv.Atoi(strings.TrimSpace(choice))
+		choice = strings.TrimSpace(choice)
+		if choice == "" {
+			continue
+		}
+		idx, err := strconv.Atoi(choice)
 		if err != nil || idx < 1 || idx > len(importantFiles) {
 			continue
 		}

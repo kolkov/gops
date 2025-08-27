@@ -126,3 +126,15 @@ func TestGenerateOutputFilename(t *testing.T) {
 		}()
 	})
 }
+
+func TestConvertConfig_SkipMarkdownByDefault(t *testing.T) {
+	scannerCfg := config.ScannerConfig{IncludeDocs: false}
+	scanCfg := convertConfig(scannerCfg, "out.md", "config")
+	assert.Contains(t, scanCfg.ExcludedPatterns, "*.md")
+}
+
+func TestConvertConfig_IncludeMarkdownWhenEnabled(t *testing.T) {
+	scannerCfg := config.ScannerConfig{IncludeDocs: true}
+	scanCfg := convertConfig(scannerCfg, "out.md", "config")
+	assert.NotContains(t, scanCfg.ExcludedPatterns, "*.md")
+}

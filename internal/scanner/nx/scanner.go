@@ -48,6 +48,7 @@ func (s *NxScanner) Scan(ctx context.Context, docGen docgen.Generator) error {
 	// Запрос на включение важных файлов
 	s.askForImportantFiles()
 
+	// Получаем список корневых файлов для структуры
 	rootFiles, err := s.getRootFiles()
 	if err != nil {
 		s.logger.Error("Failed to get root files", err)
@@ -62,6 +63,12 @@ func (s *NxScanner) Scan(ctx context.Context, docGen docgen.Generator) error {
 	docGen.WriteHeader(meta)
 	docGen.WriteNxStructure(selectedProjects, rootFiles)
 
+	// НОВОЕ: Обрабатываем и выводим содержимое корневых важных файлов
+	if err := s.processRootImportantFiles(docGen); err != nil {
+		s.logger.Error("Failed to process root important files", err)
+	}
+
+	// Сканируем выбранные проекты
 	for _, project := range selectedProjects {
 		if err := s.scanProject(ctx, docGen, project); err != nil {
 			s.logger.Error("Project scan failed", err)
@@ -72,25 +79,83 @@ func (s *NxScanner) Scan(ctx context.Context, docGen docgen.Generator) error {
 	return nil
 }
 
+// НОВЫЙ МЕТОД: Обработка важных корневых файлов
+func (s *NxScanner) processRootImportantFiles(docGen docgen.Generator) error {
+	// Проверяем что MaxFileSize установлен
+	if s.cfg.MaxFileSize == 0 {
+		s.cfg.MaxFileSize = 2 * 1024 * 1024 // 2MB по умолчанию
+	}
+
+	// Фильтруем только те важные файлы, которые находятся в корне
+	var rootImportantFiles []string
+	for _, importantFile := range s.cfg.ImportantFiles {
+		// Проверяем существование файла в корне
+		fullPath := filepath.Join(s.rootDir, importantFile)
+		if _, err := os.Stat(fullPath); err == nil {
+			rootImportantFiles = append(rootImportantFiles, importantFile)
+		}
+	}
+
+	if len(rootImportantFiles) == 0 {
+		return nil
+	}
+
+	// Выводим заголовок для корневых конфигурационных файлов
+	docGen.WriteRootConfigHeader()
+
+	// Обрабатываем каждый важный файл
+	for _, fileName := range rootImportantFiles {
+		fullPath := filepath.Join(s.rootDir, fileName)
+
+		// Читаем содержимое файла
+		content, err := filesystem.ReadFile(fullPath, s.cfg.MaxFileSize)
+		if err != nil {
+			s.logger.Error("Failed to read important file", err, "file", fileName)
+			// Создаем файл с отметкой об ошибке
+			file := &model.ProjectFile{
+				Path:    fileName,
+				Skipped: true,
+				Lang:    model.GetFileLanguage(fileName),
+			}
+			docGen.WriteFileSection(file)
+			continue
+		}
+
+		// Создаем структуру файла для вывода
+		file := &model.ProjectFile{
+			Path:    fileName,
+			Content: content,
+			Lang:    model.GetFileLanguage(fileName),
+			Skipped: false,
+		}
+
+		docGen.WriteFileSection(file)
+	}
+
+	return nil
+}
+
 func (s *NxScanner) askForImportantFiles() {
 	importantFiles := []string{
 		"package.json",
 		"nx.json",
 		"project.json",
+		"tsconfig.base.json",
 	}
 
 	fmt.Println("\nВключить важные конфигурационные файлы?")
 	fmt.Println("1. package.json (общая конфигурация проекта)")
 	fmt.Println("2. nx.json (конфигурация Nx Monorepo)")
 	fmt.Println("3. project.json (конфигурация приложения)")
+	fmt.Println("4. tsconfig.base.json (базовая конфигурация TypeScript)")
 	fmt.Println("0. Не включать (по умолчанию)")
-	fmt.Print("Выберите файлы через запятую (например, 1,2,3): ")
+	fmt.Print("Выберите файлы через запятую (например, 1,2,4): ")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
 	input := strings.TrimSpace(scanner.Text())
 
-	if input == "" {
+	if input == "" || input == "0" {
 		return
 	}
 

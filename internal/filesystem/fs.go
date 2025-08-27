@@ -48,7 +48,11 @@ func ReadFile(path string, maxSize int64) ([]byte, error) {
 		return nil, err
 	}
 
-	return buf.Bytes(), nil
+	// ВАЖНО: Возвращаем КОПИЮ байтов, а не ссылку на буфер!
+	// Буфер будет переиспользован для следующего файла
+	result := make([]byte, buf.Len())
+	copy(result, buf.Bytes())
+	return result, nil
 }
 
 func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedPatterns, importantFiles []string) bool {

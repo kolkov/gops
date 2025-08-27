@@ -96,18 +96,22 @@ func convertConfig(cfg config.ScannerConfig, outputFile, outConfigFilename strin
 
 	// Системные исключения (всегда применяются)
 	systemExcludes := []string{
-		"node_modules",                                     // Исключить всю директорию node_modules
-		"package-lock.json", "yarn.lock", "pnpm-lock.yaml", // Lock-файлы пакетных менеджеров
-		"go.sum",                   // Go lock-файл
-		".git", ".idea", ".vscode", // Системные директории
-		"dist", "build", "out", "bin", "obj", // Артефакты сборки
-		"__pycache__", ".pytest_cache", // Кэш Python
-		"coverage", ".nyc_output", // Отчеты покрытия
-		".angular", ".nx", ".next", ".nuxt", // Фреймворк-специфичные
-		"__tests__", "__snapshots__", "e2e", // Тестовые директории
-		"*.log", "*.tmp", "*.bak", // Временные файлы
-		"*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg", "*.bmp", "*.webp", // Изображения
-		"project_structure.txt", // Файл структуры проекта (специальное исключение)
+		"node_modules",
+		"package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+		"go.sum", ".git", ".idea", ".vscode",
+		"dist", "build", "out", "bin", "obj",
+		"__pycache__", ".pytest_cache",
+		"coverage", ".nyc_output",
+		".angular", ".nx", ".next", ".nuxt",
+		"__tests__", "__snapshots__", "e2e",
+		"*.log", "*.tmp", "*.bak",
+		"*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg", "*.bmp", "*.webp",
+		"project_structure.txt",
+	}
+
+	// Исключаем документацию по умолчанию
+	if !cfg.IncludeDocs {
+		systemExcludes = append(systemExcludes, "*.md")
 	}
 
 	// Добавляем системные исключения, если их еще нет в конфиге

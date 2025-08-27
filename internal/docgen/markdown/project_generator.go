@@ -18,3 +18,9 @@ func (g *Generator) WriteModulesHeader() {
 	g.file.WriteString("## Основные модули\n\n")
 	g.file.WriteString("В этом разделе представлены ключевые файлы проекта с их исходным кодом:\n\n")
 }
+
+// WriteRootConfigHeader - НОВЫЙ МЕТОД для заголовка корневых конфигурационных файлов
+func (g *Generator) WriteRootConfigHeader() {
+	g.file.WriteString("\n## Корневые конфигурационные файлы\n\n")
+	g.file.WriteString("В этом разделе представлены основные конфигурационные файлы проекта:\n\n")
+}

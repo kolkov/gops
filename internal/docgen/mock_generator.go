@@ -11,4 +11,5 @@ func (m *MockGenerator) WriteNxStructure(projects []*model.NxProject, rootFiles 
 func (m *MockGenerator) WriteProjectHeader(name, ptype, root string)                      {}
 func (m *MockGenerator) WriteProjectTree(structure string)                                {}
 func (m *MockGenerator) WriteModulesHeader()                                              {}
+func (m *MockGenerator) WriteRootConfigHeader()                                           {} // НОВЫЙ МЕТОД
 func (m *MockGenerator) Close() error                                                     { return nil }

@@ -18,6 +18,7 @@ type ScannerConfig struct {
 	IncludeConfigs   bool     `yaml:"include_configs"`
 	IncludeMarkup    bool     `yaml:"include_markup"`
 	IncludeStyles    bool     `yaml:"include_styles"`
+	IncludeDocs      bool     `yaml:"include_docs"` // ← новое
 	ExcludedPatterns []string `yaml:"excluded_patterns"`
 	ParallelWorkers  int      `yaml:"parallel_workers"`
 	Timeout          Duration `yaml:"timeout"`

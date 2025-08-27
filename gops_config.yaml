@@ -4,6 +4,7 @@ scanner:
   include_configs: true
   include_markup: false
   include_styles: false
+  include_docs: false   # по умолчанию
   excluded_patterns:
     - "*.lock"
     - "*.log"

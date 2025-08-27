@@ -24,6 +24,7 @@ func (m *MockGenerator) WriteProjectHeader(name, ptype, root string) {}
 func (m *MockGenerator) WriteProjectTree(structure string)           {}
 func (m *MockGenerator) WriteModulesHeader()                         {}
 func (m *MockGenerator) WriteFileSection(file *model.ProjectFile)    {}
+func (m *MockGenerator) WriteRootConfigHeader()                      {} // НОВЫЙ МЕТОД
 func (m *MockGenerator) Close() error                                { return nil }
 
 func TestNxScanner(t *testing.T) {
@@ -148,4 +149,185 @@ func filterProjects(projects []*model.NxProject, input string) []*model.NxProjec
 	}
 
 	return selected
+}
+
+// MockGeneratorWithTracking для отслеживания вызовов методов
+type MockGeneratorWithTracking struct {
+	rootConfigCalled bool
+	rootFiles        []*model.ProjectFile
+}
+
+func (m *MockGeneratorWithTracking) WriteHeader(meta *model.ProjectMeta) {}
+func (m *MockGeneratorWithTracking) WriteTree(structure string)          {}
+func (m *MockGeneratorWithTracking) WriteNxStructure(projects []*model.NxProject, rootFiles []string) {
+}
+func (m *MockGeneratorWithTracking) WriteProjectHeader(name, ptype, root string) {}
+func (m *MockGeneratorWithTracking) WriteProjectTree(structure string)           {}
+func (m *MockGeneratorWithTracking) WriteModulesHeader()                         {}
+func (m *MockGeneratorWithTracking) Close() error                                { return nil }
+
+func (m *MockGeneratorWithTracking) WriteRootConfigHeader() {
+	m.rootConfigCalled = true
+}
+
+func (m *MockGeneratorWithTracking) WriteFileSection(file *model.ProjectFile) {
+	// Сохраняем файлы для проверки
+	if m.rootFiles == nil {
+		m.rootFiles = []*model.ProjectFile{}
+	}
+	m.rootFiles = append(m.rootFiles, file)
+}
+
+func TestNxScanner_ProcessRootImportantFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	log := logger.New(logger.InfoLevel)
+
+	// Создаем корневые конфигурационные файлы
+	packageJSON := []byte(`{
+  "name": "test-monorepo",
+  "version": "1.0.0",
+  "license": "MIT"
+}`)
+
+	nxJSON := []byte(`{
+  "npmScope": "test",
+  "affected": {
+    "defaultBase": "main"
+  }
+}`)
+
+	tsconfigJSON := []byte(`{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "esnext"
+  }
+}`)
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "package.json"), packageJSON, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "nx.json"), nxJSON, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "tsconfig.base.json"), tsconfigJSON, 0644))
+
+	// Создаем структуру проектов
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "apps", "app1"), 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tmpDir, "apps", "app1", "project.json"),
+		[]byte(`{"name": "app1"}`),
+		0644,
+	))
+
+	t.Run("ImportantFilesProcessing", func(t *testing.T) {
+		cfg := &model.ScanConfig{
+			ImportantFiles: []string{
+				"package.json",
+				"nx.json",
+				"tsconfig.base.json",
+			},
+			MaxFileSize:          2 * 1024 * 1024,
+			OutputFilename:       "output.md",
+			OutputConfigFilename: "project_docs.md",
+		}
+
+		scanner := NewScanner(tmpDir, "output.md", cfg, log)
+		mockGen := &MockGeneratorWithTracking{}
+
+		// Вызываем метод обработки корневых файлов напрямую
+		err := scanner.processRootImportantFiles(mockGen)
+		require.NoError(t, err)
+
+		// Проверяем что был вызван WriteRootConfigHeader
+		assert.True(t, mockGen.rootConfigCalled, "WriteRootConfigHeader should be called")
+
+		// Проверяем что все файлы были обработаны
+		assert.Len(t, mockGen.rootFiles, 3, "Should process 3 root files")
+
+		// Отладочная информация - выводим что получили
+		t.Logf("Processed files count: %d", len(mockGen.rootFiles))
+		for i, file := range mockGen.rootFiles {
+			t.Logf("File %d: Path=%s, Content length=%d, Lang=%s",
+				i, file.Path, len(file.Content), file.Lang)
+			if len(file.Content) > 50 {
+				t.Logf("  Content preview: %s...", string(file.Content[:50]))
+			} else {
+				t.Logf("  Content: %s", string(file.Content))
+			}
+		}
+
+		// Проверяем содержимое файлов - ищем каждый файл по имени
+		fileMap := make(map[string]*model.ProjectFile)
+		for _, file := range mockGen.rootFiles {
+			fileMap[file.Path] = file
+		}
+
+		// Проверяем package.json
+		if file, ok := fileMap["package.json"]; ok {
+			assert.NotNil(t, file.Content, "File content should not be nil for package.json")
+			assert.False(t, file.Skipped, "File should not be skipped for package.json")
+			assert.Contains(t, string(file.Content), "test-monorepo", "package.json should contain 'test-monorepo'")
+			assert.Equal(t, "json", file.Lang)
+		} else {
+			t.Error("package.json not found in processed files")
+		}
+
+		// Проверяем nx.json
+		if file, ok := fileMap["nx.json"]; ok {
+			assert.NotNil(t, file.Content, "File content should not be nil for nx.json")
+			assert.False(t, file.Skipped, "File should not be skipped for nx.json")
+			assert.Contains(t, string(file.Content), "npmScope", "nx.json should contain 'npmScope'")
+			assert.Equal(t, "json", file.Lang)
+		} else {
+			t.Error("nx.json not found in processed files")
+		}
+
+		// Проверяем tsconfig.base.json
+		if file, ok := fileMap["tsconfig.base.json"]; ok {
+			assert.NotNil(t, file.Content, "File content should not be nil for tsconfig.base.json")
+			assert.False(t, file.Skipped, "File should not be skipped for tsconfig.base.json")
+			assert.Contains(t, string(file.Content), "compilerOptions", "tsconfig.base.json should contain 'compilerOptions'")
+			assert.Equal(t, "json", file.Lang)
+		} else {
+			t.Error("tsconfig.base.json not found in processed files")
+		}
+	})
+
+	t.Run("NoImportantFiles", func(t *testing.T) {
+		cfg := &model.ScanConfig{
+			ImportantFiles:       []string{}, // Нет важных файлов
+			MaxFileSize:          2 * 1024 * 1024,
+			OutputFilename:       "output.md",
+			OutputConfigFilename: "project_docs.md",
+		}
+
+		scanner := NewScanner(tmpDir, "output.md", cfg, log)
+		mockGen := &MockGeneratorWithTracking{}
+
+		err := scanner.processRootImportantFiles(mockGen)
+		require.NoError(t, err)
+
+		// Не должен вызываться WriteRootConfigHeader если нет файлов
+		assert.False(t, mockGen.rootConfigCalled, "WriteRootConfigHeader should not be called when no files")
+		assert.Len(t, mockGen.rootFiles, 0, "Should not process any files")
+	})
+
+	t.Run("NonExistentImportantFiles", func(t *testing.T) {
+		cfg := &model.ScanConfig{
+			ImportantFiles: []string{
+				"package.json",
+				"non-existent.json", // Несуществующий файл
+			},
+			MaxFileSize:          2 * 1024 * 1024,
+			OutputFilename:       "output.md",
+			OutputConfigFilename: "project_docs.md",
+		}
+
+		scanner := NewScanner(tmpDir, "output.md", cfg, log)
+		mockGen := &MockGeneratorWithTracking{}
+
+		err := scanner.processRootImportantFiles(mockGen)
+		require.NoError(t, err)
+
+		// Должен обработать только существующий файл
+		assert.True(t, mockGen.rootConfigCalled)
+		assert.Len(t, mockGen.rootFiles, 1, "Should process only existing file")
+		assert.Equal(t, "package.json", mockGen.rootFiles[0].Path)
+	})
 }
