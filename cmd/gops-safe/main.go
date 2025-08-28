@@ -123,6 +123,9 @@ func main() {
 		zapLogger.Fatal("Documentation generation failed", err)
 	}
 
+	// Проверяем .gitignore
+	checkGitignore(absRoot, processorConfig.OutputFile, zapLogger)
+
 	// Выводим результаты
 	zapLogger.Info("✅ Sequential processing completed successfully!",
 		"duration", result.Duration,
@@ -725,4 +728,123 @@ func generateDocumentation(result *ProcessResult, outputPath string) error {
 	}
 
 	return os.WriteFile(outputPath, []byte(content), 0644)
+}
+
+// checkGitignore проверяет .gitignore и выдает предупреждения о необходимых исключениях
+func checkGitignore(rootDir, outputFile string, logger *logger.Logger) {
+	gitignorePath := filepath.Join(rootDir, ".gitignore")
+	
+	// Проверяем, существует ли .gitignore
+	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+		logger.Warn("⚠️  .gitignore file not found. Consider creating one to exclude GOPS service files.")
+		printGitignoreRecommendations(outputFile)
+		return
+	}
+	
+	// Читаем содержимое .gitignore
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		logger.Warn("Failed to read .gitignore", "error", err)
+		return
+	}
+	
+	gitignoreContent := string(content)
+	
+	// Определяем какие паттерны должны быть в .gitignore
+	requiredPatterns := []string{
+		".gops/",           // Папка GOPS
+		".claude/",         // Папка Claude Code
+		"project_docs_*.md", // Сгенерированная документация
+		"gops_config_*.yaml", // Старые конфиги GOPS
+	}
+	
+	// Рекомендуемые паттерны (не обязательные)
+	recommendedPatterns := []string{
+		"*.exe",           // Исполняемые файлы Windows
+		"*.log",           // Лог файлы
+		"*.tmp",           // Временные файлы
+		"node_modules/",   // Node.js зависимости
+		".vscode/",        // VS Code настройки
+		".idea/",          // JetBrains IDE настройки
+	}
+	
+	var missingRequired []string
+	var missingRecommended []string
+	
+	// Проверяем обязательные паттерны
+	for _, pattern := range requiredPatterns {
+		if !strings.Contains(gitignoreContent, pattern) && !strings.Contains(gitignoreContent, strings.TrimSuffix(pattern, "/")) {
+			missingRequired = append(missingRequired, pattern)
+		}
+	}
+	
+	// Проверяем рекомендуемые паттерны
+	for _, pattern := range recommendedPatterns {
+		if !strings.Contains(gitignoreContent, pattern) && !strings.Contains(gitignoreContent, strings.TrimSuffix(pattern, "/")) {
+			missingRecommended = append(missingRecommended, pattern)
+		}
+	}
+	
+	// Выводим предупреждения
+	if len(missingRequired) > 0 {
+		logger.Warn("🚨 IMPORTANT: Missing required patterns in .gitignore to exclude GOPS service files:")
+		for _, pattern := range missingRequired {
+			logger.Warn("  - " + pattern)
+		}
+		fmt.Printf("\n🚨 GITIGNORE WARNING: Add these patterns to .gitignore:\n")
+		for _, pattern := range missingRequired {
+			fmt.Printf("   %s\n", pattern)
+		}
+		fmt.Printf("\nRun: echo -e '\\n# GOPS service files\\n%s' >> .gitignore\n", strings.Join(missingRequired, "\\n"))
+	}
+	
+	if len(missingRecommended) > 0 && len(missingRecommended) >= 3 {
+		logger.Info("💡 Recommended: Consider adding these patterns to .gitignore:")
+		for _, pattern := range missingRecommended[:3] { // Показываем только первые 3
+			logger.Info("  - " + pattern)
+		}
+		if len(missingRecommended) > 3 {
+			logger.Info(fmt.Sprintf("  ... and %d more", len(missingRecommended)-3))
+		}
+	}
+	
+	if len(missingRequired) == 0 {
+		logger.Info("✅ .gitignore correctly excludes GOPS service files")
+	}
+}
+
+func printGitignoreRecommendations(outputFile string) {
+	fmt.Printf("\n💡 RECOMMENDATION: Create .gitignore with these patterns:\n")
+	fmt.Printf(`
+# GOPS service files and generated documentation  
+.gops/
+.claude/
+project_docs_*.md
+gops_config_*.yaml
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# IDE and editor files
+.vscode/
+.idea/
+.vs/
+
+# Dependencies
+node_modules/
+vendor/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+`)
+	fmt.Printf("\nCreate: echo 'See above' > .gitignore\n")
 }

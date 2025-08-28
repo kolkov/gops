@@ -1,5 +1,6 @@
 .idea
-project_docs*
-gops_config*.yaml
-.gops
+project_docs_*.md
+gops_config_*.yaml
+.gops/
+.claude/
 *.exe
