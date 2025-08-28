@@ -84,6 +84,11 @@ func (p *Plugin) Dependencies() []string {
 
 // Lifecycle methods
 
+func (p *Plugin) Init(config map[string]interface{}) error {
+	// Инициализация с конфигурацией
+	return nil
+}
+
 func (p *Plugin) OnLoad(ctx context.Context, logger *logger.Logger) error {
 	p.logger = logger
 	p.logger.Info("NX Monorepo project plugin loaded")

@@ -54,7 +54,7 @@ func TestGenerator(t *testing.T) {
 
 		file := &model.ProjectFile{
 			Path:    "src/main.go",
-			Content: []byte("package main\n\nfunc main() {}"),
+			Content: "package main\n\nfunc main() {}",
 			Lang:    "go",
 		}
 		gen.WriteFileSection(file)

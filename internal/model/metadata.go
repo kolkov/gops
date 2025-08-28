@@ -78,6 +78,17 @@ type FileMetadata struct {
 	// Дополнительные атрибуты
 	Attributes map[string]interface{} `json:"attributes,omitempty"`
 
+	// Анализ кода - добавляем для совместимости с плагинами
+	Language   string   `json:"language,omitempty"`
+	LOC        int      `json:"loc,omitempty"`        // Lines of Code
+	SLOC       int      `json:"sloc,omitempty"`       // Source Lines of Code  
+	Complexity int      `json:"complexity,omitempty"`
+	Functions  int      `json:"functions,omitempty"`
+	Classes    int      `json:"classes,omitempty"`
+	Imports    []string `json:"imports,omitempty"`
+	Exports    []string `json:"exports,omitempty"`
+	Comments   int      `json:"comments,omitempty"`
+
 	// Статус обработки
 	Processed   bool        `json:"processed"`
 	Selected    bool        `json:"selected"`
@@ -148,11 +159,12 @@ type Dependency struct {
 
 // ProjectInfo - детальная информация о проекте после анализа
 type ProjectInfo struct {
-	Type      string   `json:"type"`
-	Version   string   `json:"version,omitempty"` // Для совместимости с плагинами
-	Framework string   `json:"framework,omitempty"`
-	Language  string   `json:"language"`
-	Languages []string `json:"languages"` // Для многоязычных проектов
+	Type        string   `json:"type"`
+	Version     string   `json:"version,omitempty"` // Для совместимости с плагинами
+	Framework   string   `json:"framework,omitempty"`
+	Language    string   `json:"language"`
+	Languages   []string `json:"languages"` // Для многоязычных проектов
+	Description string   `json:"description,omitempty"` // Добавляем для плагинов
 
 	// Компоненты проекта
 	Components []Component `json:"components"`
@@ -191,6 +203,7 @@ type Module struct {
 	Path         string   `json:"path"`
 	Type         string   `json:"type"`
 	Version      string   `json:"version,omitempty"`
+	Description  string   `json:"description,omitempty"` // Добавляем для плагинов
 	Dependencies []string `json:"dependencies,omitempty"`
 	Exports      []string `json:"exports,omitempty"`
 	Public       bool     `json:"public"`

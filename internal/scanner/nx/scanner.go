@@ -124,7 +124,7 @@ func (s *NxScanner) processRootImportantFiles(docGen docgen.Generator) error {
 		// Создаем структуру файла для вывода
 		file := &model.ProjectFile{
 			Path:    fileName,
-			Content: content,
+			Content: string(content),
 			Lang:    model.GetFileLanguage(fileName),
 			Skipped: false,
 		}

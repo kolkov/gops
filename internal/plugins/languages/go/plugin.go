@@ -64,6 +64,11 @@ func (p *Plugin) Dependencies() []string {
 
 // Lifecycle methods
 
+func (p *Plugin) Init(config map[string]interface{}) error {
+	// Инициализация с конфигурацией
+	return nil
+}
+
 func (p *Plugin) OnLoad(ctx context.Context, logger *logger.Logger) error {
 	p.logger = logger
 	p.logger.Info("Go language plugin loaded")
@@ -102,13 +107,17 @@ func (p *Plugin) GetMetadata() *plugin.PluginMetadata {
 		License:      "MIT",
 		Homepage:     "https://github.com/kolkov/gops",
 		Tags:         []string{"language", "go", "ast"},
-		Capabilities: []string{"parse", "analyze", "extract"},
+		Capabilities: []plugin.PluginCapability{
+			plugin.CapabilityASTParsing,
+			plugin.CapabilityComplexity,
+			plugin.CapabilitySyntaxCheck,
+		},
 	}
 }
 
 // LanguagePlugin interface methods
 
-func (p *Plugin) GetLanguage() string {
+func (p *Plugin) GetLanguage(filepath string, content []byte) string {
 	return "go"
 }
 
@@ -141,17 +150,16 @@ func (p *Plugin) ExtractMetadata(ctx context.Context, file *model.ProjectFile) (
 	}
 
 	metadata := &model.FileMetadata{
-		Language:    p.GetLanguage(),
+		Language:    p.GetLanguage(file.Path, []byte(file.Content)),
 		LOC:         p.countLines(file.Content),
 		SLOC:        p.countSourceLines(file.Content),
 		Complexity:  p.calculateComplexity(parsed),
-		Functions:   p.extractFunctions(parsed),
-		Classes:     p.extractStructs(parsed),
-		Imports:     p.extractImports(parsed),
-		Exports:     p.extractExports(parsed),
-		Comments:    p.extractComments(parsed),
-		TODOs:       p.extractTODOs(file.Content),
-		PackageName: parsed.Name.Name,
+		Functions:   len(p.extractFunctions(parsed)),
+		Classes:     len(p.extractStructs(parsed)),
+		Imports:     p.extractImportPaths(parsed),
+		Exports:     p.extractExportNames(parsed),
+		Comments:    len(p.extractComments(parsed)),
+		// TODOs и PackageName убираем, так как их нет в FileMetadata
 	}
 
 	return metadata, nil
@@ -172,15 +180,15 @@ func (p *Plugin) ParseFile(ctx context.Context, filePath, content string) (*mode
 	}
 
 	parsedFile := &model.ParsedFile{
-		Path:        filePath,
-		Language:    p.GetLanguage(),
-		AST:         parsed,
-		PackageName: parsed.Name.Name,
-		Functions:   p.extractFunctions(parsed),
-		Types:       p.extractStructs(parsed),
-		Imports:     p.extractImports(parsed),
-		Exports:     p.extractExports(parsed),
-		Comments:    p.extractComments(parsed),
+		Path:         filePath,
+		Language:     p.GetLanguage(filePath, []byte(content)),
+		Functions:    p.extractFunctions(parsed),
+		Classes:      p.extractStructs(parsed),
+		Imports:      p.extractImportPaths(parsed),
+		Exports:      p.extractExportNames(parsed),
+		Comments:     p.extractComments(parsed),
+		LineCount:    p.countLines(content),
+		Complexity:   p.calculateComplexity(parsed),
 	}
 
 	return parsedFile, nil
@@ -463,6 +471,53 @@ func (p *Plugin) extractTODOs(content string) []model.TODOInfo {
 	}
 
 	return todos
+}
+
+// extractImportPaths извлекает пути импортов как строки
+func (p *Plugin) extractImportPaths(file *ast.File) []string {
+	paths := make([]string, 0)
+	for _, imp := range file.Imports {
+		if imp.Path != nil {
+			// Убираем кавычки
+			path := strings.Trim(imp.Path.Value, "\"")
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+// extractExportNames извлекает имена экспортированных элементов
+func (p *Plugin) extractExportNames(file *ast.File) []string {
+	exports := make([]string, 0)
+	
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch decl := n.(type) {
+		case *ast.FuncDecl:
+			if decl.Name.IsExported() {
+				exports = append(exports, decl.Name.Name)
+			}
+		case *ast.GenDecl:
+			if decl.Tok == token.TYPE || decl.Tok == token.VAR || decl.Tok == token.CONST {
+				for _, spec := range decl.Specs {
+					switch s := spec.(type) {
+					case *ast.TypeSpec:
+						if s.Name.IsExported() {
+							exports = append(exports, s.Name.Name)
+						}
+					case *ast.ValueSpec:
+						for _, name := range s.Names {
+							if name.IsExported() {
+								exports = append(exports, name.Name)
+							}
+						}
+					}
+				}
+			}
+		}
+		return true
+	})
+	
+	return exports
 }
 
 // Register регистрирует плагин в системе

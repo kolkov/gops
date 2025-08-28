@@ -78,6 +78,11 @@ func (p *Plugin) Dependencies() []string {
 
 // Lifecycle methods
 
+func (p *Plugin) Init(config map[string]interface{}) error {
+	// Инициализация с конфигурацией
+	return nil
+}
+
 func (p *Plugin) OnLoad(ctx context.Context, logger *logger.Logger) error {
 	p.logger = logger
 	p.logger.Info("JavaScript/TypeScript language plugin loaded")
@@ -116,7 +121,11 @@ func (p *Plugin) GetMetadata() *plugin.PluginMetadata {
 		License:      "MIT",
 		Homepage:     "https://github.com/kolkov/gops",
 		Tags:         []string{"language", "javascript", "typescript", "js", "ts"},
-		Capabilities: []string{"parse", "analyze", "extract"},
+		Capabilities: []plugin.PluginCapability{
+			plugin.CapabilityASTParsing,
+			plugin.CapabilityComplexity,
+			plugin.CapabilitySyntaxCheck,
+		},
 	}
 }
 
@@ -296,7 +305,7 @@ func (p *Plugin) calculateComplexity(content string) int {
 
 	// Подсчитываем ключевые слова, увеличивающие сложность
 	complexityKeywords := []string{
-		"if", "else", "while", "for", "switch", "case", "catch", "&&", "||"
+		"if", "else", "while", "for", "switch", "case", "catch", "&&", "||",
 	}
 
 	for _, keyword := range complexityKeywords {
