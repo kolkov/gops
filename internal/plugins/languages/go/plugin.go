@@ -1,5 +1,5 @@
-// Package go contains the Go language plugin
-package go
+// Package golang contains the Go language plugin
+package golang
 
 import (
 	"context"

@@ -17,6 +17,24 @@ scanner:
         - '*.dll'
         - '*.so'
         - '*.dylib'
+        # Служебные файлы и папки утилит
+        - .gops/**
+        - .claude/**
+        - gops_config*.yaml
+        - go.sum
+        - package-lock.json
+        - yarn.lock
+        - pnpm-lock.yaml
+        - node_modules/**
+        - .git/**
+        - .idea/**
+        - .vscode/**
+        - dist/**
+        - build/**
+        - coverage/**
+        - .nyc_output/**
+        - .angular/**
+        - .nx/**
     parallel_workers: 4
     timeout: 5m0s
 output:
