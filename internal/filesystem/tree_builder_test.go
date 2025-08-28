@@ -411,3 +411,140 @@ func TestTreeBuilder(t *testing.T) {
 			"Файлы должны быть в алфавитном порядке")
 	})
 }
+
+func TestTreeBuilder_ExcludesGopsConfigFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Создаем файлы конфигурации gops, которые должны быть исключены
+	gopsFiles := []string{
+		"gops_config.yaml",
+		"gops_config_old.yaml",
+		"custom_gops_config.yml",
+	}
+
+	for _, file := range gopsFiles {
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, file), []byte("config content"), 0644))
+	}
+
+	// Создаем нормальные файлы, которые должны быть включены
+	normalFiles := []string{
+		"main.go",
+		"README.md",
+		"documentation.md",
+	}
+
+	for _, file := range normalFiles {
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, file), []byte("content"), 0644))
+	}
+
+	// Создаем полный конфиг с включенной документацией и явно задаем OutputConfigFilename
+	cfg := &model.ScanConfig{
+		MaxFileSize:          2 * 1024 * 1024,
+		IncludeTests:         true,
+		IncludeConfigs:       true,
+		IncludeMarkup:        true,
+		IncludeStyles:        true,
+		IncludeDocs:          true, // Явно включаем документацию
+		ExcludedPatterns:     []string{},
+		ParallelWorkers:      4,
+		SelectionMode:        "all",
+		IncludedPaths:        []string{},
+		IncludePatterns:      []string{},
+		ImportantFiles:       []string{},
+		ShowFullStructure:    false,
+		DocumentationMode:    "full",
+		OutputFilename:       "output.md",
+		OutputConfigFilename: "project_docs.md", // Явно задаем, чтобы шаблон был "project_docs*.md"
+	}
+
+	builder := NewTreeBuilder(tmpDir, cfg)
+	structure, err := builder.BuildStructure()
+	require.NoError(t, err)
+
+	// Отладочная информация
+	t.Logf("Found %d files in structure:", len(structure.Files))
+	for i, file := range structure.Files {
+		t.Logf("  %d: %s (skipped: %v, lang: %s)", i, file.Path, file.Skipped, file.Lang)
+	}
+
+	// Проверяем, что файлы gops исключены
+	for _, gopsFile := range gopsFiles {
+		found := false
+		for _, projectFile := range structure.Files {
+			if projectFile.Path == gopsFile {
+				found = true
+				break
+			}
+		}
+		assert.False(t, found, "Gops config file %s should be excluded", gopsFile)
+	}
+
+	// Проверяем, что нормальные файлы включены и не пропущены
+	for _, normalFile := range normalFiles {
+		found := false
+		for _, projectFile := range structure.Files {
+			if projectFile.Path == normalFile && !projectFile.Skipped {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "Normal file %s should be included and not skipped", normalFile)
+	}
+}
+
+func TestTreeBuilder_ExcludesGoSum(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Создаем go.sum и другие системные файлы
+	systemFiles := []string{
+		"go.sum",
+		"package-lock.json",
+		"yarn.lock",
+	}
+
+	for _, file := range systemFiles {
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, file), []byte("content"), 0644))
+	}
+
+	// Создаем нормальные файлы
+	normalFiles := []string{
+		"go.mod",
+		"main.go",
+	}
+
+	for _, file := range normalFiles {
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, file), []byte("content"), 0644))
+	}
+
+	cfg := &model.ScanConfig{
+		ExcludedPatterns: []string{},
+	}
+
+	builder := NewTreeBuilder(tmpDir, cfg)
+	structure, err := builder.BuildStructure()
+	require.NoError(t, err)
+
+	// Проверяем, что системные файлы исключены
+	for _, systemFile := range systemFiles {
+		excluded := true
+		for _, projectFile := range structure.Files {
+			if projectFile.Path == systemFile {
+				excluded = false
+				break
+			}
+		}
+		assert.True(t, excluded, "System file %s should be excluded", systemFile)
+	}
+
+	// Проверяем, что нормальные файлы включены
+	for _, normalFile := range normalFiles {
+		included := false
+		for _, projectFile := range structure.Files {
+			if projectFile.Path == normalFile {
+				included = true
+				break
+			}
+		}
+		assert.True(t, included, "Normal file %s should be included", normalFile)
+	}
+}

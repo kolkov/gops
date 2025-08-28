@@ -28,6 +28,15 @@ type ProjectFile struct {
 	Content []byte
 	Lang    string
 	Skipped bool
+	Header  *FileHeader
+}
+
+type FileHeader struct {
+	ExportedFunctions []string `yaml:"exported_functions"`
+	ExportedTypes     []string `yaml:"exported_types"`
+	ExportedConstants []string `yaml:"exported_constants"`
+	Dependencies      []string `yaml:"dependencies"`
+	Summary           string   `yaml:"summary"`
 }
 
 type NxProject struct {
@@ -37,23 +46,41 @@ type NxProject struct {
 	SourceDir string
 }
 
+type ProjectStructure struct {
+	Root     *FileNode
+	Files    []*ProjectFile
+	AllPaths []string
+}
+
+type FileNode struct {
+	Path     string
+	Name     string
+	IsDir    bool
+	Children []*FileNode
+	FileInfo *ProjectFile
+}
+
 type ScanConfig struct {
 	// Основные настройки
-	IncludeTests         bool
-	IncludeConfigs       bool
-	IncludeMarkup        bool
-	IncludeStyles        bool
-	ExcludedPatterns     []string
-	MaxFileSize          int64
-	ParallelWorkers      int
-	OutputFilename       string
-	OutputConfigFilename string
-	ImportantFiles       []string
+	IncludeTests         bool     `yaml:"include_tests"`
+	IncludeConfigs       bool     `yaml:"include_configs"`
+	IncludeMarkup        bool     `yaml:"include_markup"`
+	IncludeStyles        bool     `yaml:"include_styles"`
+	IncludeDocs          bool     `yaml:"include_docs"` // Добавляем это поле
+	ExcludedPatterns     []string `yaml:"excluded_patterns"`
+	MaxFileSize          int64    `yaml:"max_file_size"`
+	ParallelWorkers      int      `yaml:"parallel_workers"`
+	Timeout              Duration `yaml:"timeout"` // Добавляем это поле
+	OutputFilename       string   `yaml:"output_filename"`
+	OutputConfigFilename string   `yaml:"output_config_filename"`
+	ImportantFiles       []string `yaml:"important_files"`
+	ShowFullStructure    bool     `yaml:"show_full_structure"`
+	DocumentationMode    string   `yaml:"documentation_mode"`
 
 	// Настройки выбора файлов
-	SelectionMode   string   // "all", "interactive", "patterns", "list"
-	IncludedPaths   []string // Список конкретных путей для включения
-	IncludePatterns []string // Паттерны для включения файлов
+	SelectionMode   string   `yaml:"selection_mode"`
+	IncludedPaths   []string `yaml:"included_paths"`
+	IncludePatterns []string `yaml:"include_patterns"`
 }
 
 // IsFileIncluded проверяет, должен ли файл быть включен в документацию

@@ -8,6 +8,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// NullBool представляет nullable boolean значение
+type NullBool struct {
+	Bool  bool
+	Valid bool // Valid is true if Bool has been set
+}
+
+// UnmarshalYAML реализует интерфейс yaml.Unmarshaler
+func (n *NullBool) UnmarshalYAML(value *yaml.Node) error {
+	var b bool
+	if err := value.Decode(&b); err != nil {
+		return err
+	}
+	n.Bool = b
+	n.Valid = true
+	return nil
+}
+
+// MarshalYAML реализует интерфейс yaml.Marshaler
+func (n NullBool) MarshalYAML() (interface{}, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	return n.Bool, nil
+}
+
+// IsTrue возвращает true если значение явно установлено и равно true
+func (n NullBool) IsTrue() bool {
+	return n.Valid && n.Bool
+}
+
+// IsFalse возвращает true если значение явно установлено и равно false
+func (n NullBool) IsFalse() bool {
+	return n.Valid && !n.Bool
+}
+
 // Константы для режимов выбора
 const (
 	SelectionModeAll         = "all"         // Включить все файлы (текущее поведение)
@@ -16,32 +51,62 @@ const (
 	SelectionModeList        = "list"        // По списку путей из конфига
 )
 
+// Config представляет финальную конфигурацию с обычными bool значениями
 type Config struct {
 	Scanner ScannerConfig `yaml:"scanner"`
 	Output  OutputConfig  `yaml:"output"`
 }
 
+// ScannerConfig представляет финальную конфигурацию сканера
 type ScannerConfig struct {
-	MaxFileSize      int64    `yaml:"max_file_size"`
-	IncludeTests     bool     `yaml:"include_tests"`
-	IncludeConfigs   bool     `yaml:"include_configs"`
-	IncludeMarkup    bool     `yaml:"include_markup"`
-	IncludeStyles    bool     `yaml:"include_styles"`
-	IncludeDocs      bool     `yaml:"include_docs"`
-	ExcludedPatterns []string `yaml:"excluded_patterns"`
-	ParallelWorkers  int      `yaml:"parallel_workers"`
-	Timeout          Duration `yaml:"timeout"`
-
-	// Поля для выборочного включения файлов
-	SelectionMode   string   `yaml:"selection_mode"`   // Режим выбора файлов
-	IncludedPaths   []string `yaml:"included_paths"`   // Конкретные пути для включения
-	IncludePatterns []string `yaml:"include_patterns"` // Паттерны для включения
+	MaxFileSize       int64    `yaml:"max_file_size"`
+	IncludeTests      bool     `yaml:"include_tests"`
+	IncludeConfigs    bool     `yaml:"include_configs"`
+	IncludeMarkup     bool     `yaml:"include_markup"`
+	IncludeStyles     bool     `yaml:"include_styles"`
+	IncludeDocs       bool     `yaml:"include_docs"`
+	ExcludedPatterns  []string `yaml:"excluded_patterns"`
+	ParallelWorkers   int      `yaml:"parallel_workers"`
+	Timeout           Duration `yaml:"timeout"`
+	DocumentationMode string   `yaml:"documentation_mode"`
+	SelectionMode     string   `yaml:"selection_mode"`
+	IncludedPaths     []string `yaml:"included_paths"`
+	IncludePatterns   []string `yaml:"include_patterns"`
+	ImportantFiles    []string `yaml:"important_files"`
+	ShowFullStructure bool     `yaml:"show_full_structure"`
 }
 
+// OutputConfig представляет финальную конфигурацию вывода
 type OutputConfig struct {
 	Format          string `yaml:"format"`
 	Filename        string `yaml:"filename"`
 	AppendTimestamp bool   `yaml:"append_timestamp"`
+}
+
+// rawConfig представляет промежуточную структуру для загрузки с NullBool
+type rawConfig struct {
+	Scanner struct {
+		MaxFileSize       int64    `yaml:"max_file_size"`
+		IncludeTests      NullBool `yaml:"include_tests"`
+		IncludeConfigs    NullBool `yaml:"include_configs"`
+		IncludeMarkup     NullBool `yaml:"include_markup"`
+		IncludeStyles     NullBool `yaml:"include_styles"`
+		IncludeDocs       NullBool `yaml:"include_docs"`
+		ExcludedPatterns  []string `yaml:"excluded_patterns"`
+		ParallelWorkers   int      `yaml:"parallel_workers"`
+		Timeout           Duration `yaml:"timeout"`
+		DocumentationMode string   `yaml:"documentation_mode"`
+		SelectionMode     string   `yaml:"selection_mode"`
+		IncludedPaths     []string `yaml:"included_paths"`
+		IncludePatterns   []string `yaml:"include_patterns"`
+		ImportantFiles    []string `yaml:"important_files"`
+		ShowFullStructure bool     `yaml:"show_full_structure"`
+	} `yaml:"scanner"`
+	Output struct {
+		Format          string `yaml:"format"`
+		Filename        string `yaml:"filename"`
+		AppendTimestamp *bool  `yaml:"append_timestamp"`
+	} `yaml:"output"`
 }
 
 type Duration time.Duration
@@ -83,11 +148,13 @@ func DefaultConfig() *Config {
 				"*.tmp",
 				"*.bak",
 			},
-			ParallelWorkers: 4,
-			Timeout:         Duration(5 * time.Minute),
-			SelectionMode:   SelectionModeAll, // По умолчанию включаем все файлы
-			IncludedPaths:   []string{},
-			IncludePatterns: []string{},
+			ParallelWorkers:   4,
+			Timeout:           Duration(5 * time.Minute),
+			SelectionMode:     SelectionModeAll,
+			IncludedPaths:     []string{},
+			IncludePatterns:   []string{},
+			ImportantFiles:    []string{},
+			ShowFullStructure: false,
 		},
 		Output: OutputConfig{
 			Format:          "markdown",
@@ -121,43 +188,144 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	// Сначала загружаем во временную структуру с NullBool
+	var raw rawConfig
+	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
-	// Применяем дефолтные значения для незаполненных полей
-	applyDefaults(&cfg)
+	// Затем преобразуем в финальную структуру, применяя дефолты
+	cfg := rawToConfig(&raw)
+	applyDefaults(cfg)
 
-	return &cfg, nil
+	return cfg, nil
 }
 
-// applyDefaults применяет дефолтные значения для незаполненных полей
-func applyDefaults(cfg *Config) {
+// rawToConfig преобразует промежуточную структуру в основную, применяя дефолты для неустановленных значений
+func rawToConfig(raw *rawConfig) *Config {
 	defaults := DefaultConfig()
+	cfg := &Config{}
 
-	if cfg.Scanner.MaxFileSize == 0 {
+	// Scanner конфигурация
+	cfg.Scanner.MaxFileSize = raw.Scanner.MaxFileSize
+	if raw.Scanner.MaxFileSize == 0 {
 		cfg.Scanner.MaxFileSize = defaults.Scanner.MaxFileSize
 	}
+
+	// Для NullBool полей применяем значения только если они установлены
+	if raw.Scanner.IncludeTests.Valid {
+		cfg.Scanner.IncludeTests = raw.Scanner.IncludeTests.Bool
+	} else {
+		cfg.Scanner.IncludeTests = defaults.Scanner.IncludeTests
+	}
+
+	if raw.Scanner.IncludeConfigs.Valid {
+		cfg.Scanner.IncludeConfigs = raw.Scanner.IncludeConfigs.Bool
+	} else {
+		cfg.Scanner.IncludeConfigs = defaults.Scanner.IncludeConfigs
+	}
+
+	if raw.Scanner.IncludeMarkup.Valid {
+		cfg.Scanner.IncludeMarkup = raw.Scanner.IncludeMarkup.Bool
+	} else {
+		cfg.Scanner.IncludeMarkup = defaults.Scanner.IncludeMarkup
+	}
+
+	if raw.Scanner.IncludeStyles.Valid {
+		cfg.Scanner.IncludeStyles = raw.Scanner.IncludeStyles.Bool
+	} else {
+		cfg.Scanner.IncludeStyles = defaults.Scanner.IncludeStyles
+	}
+
+	if raw.Scanner.IncludeDocs.Valid {
+		cfg.Scanner.IncludeDocs = raw.Scanner.IncludeDocs.Bool
+	} else {
+		cfg.Scanner.IncludeDocs = defaults.Scanner.IncludeDocs
+	}
+
+	cfg.Scanner.ExcludedPatterns = raw.Scanner.ExcludedPatterns
+	if len(cfg.Scanner.ExcludedPatterns) == 0 {
+		cfg.Scanner.ExcludedPatterns = defaults.Scanner.ExcludedPatterns
+	}
+
+	cfg.Scanner.ParallelWorkers = raw.Scanner.ParallelWorkers
 	if cfg.Scanner.ParallelWorkers == 0 {
 		cfg.Scanner.ParallelWorkers = defaults.Scanner.ParallelWorkers
 	}
+
+	cfg.Scanner.Timeout = raw.Scanner.Timeout
 	if cfg.Scanner.Timeout == 0 {
 		cfg.Scanner.Timeout = defaults.Scanner.Timeout
 	}
-	if cfg.Output.Format == "" {
-		cfg.Output.Format = defaults.Output.Format
+
+	cfg.Scanner.DocumentationMode = raw.Scanner.DocumentationMode
+	if cfg.Scanner.DocumentationMode == "" {
+		cfg.Scanner.DocumentationMode = defaults.Scanner.DocumentationMode
 	}
-	if cfg.Output.AppendTimestamp && cfg.Output.Filename == "" {
-		cfg.Output.Filename = defaults.Output.Filename
-	}
+
+	cfg.Scanner.SelectionMode = raw.Scanner.SelectionMode
 	if cfg.Scanner.SelectionMode == "" {
 		cfg.Scanner.SelectionMode = defaults.Scanner.SelectionMode
 	}
 
-	// Добавляем разумные исключения по умолчанию если их нет
-	if len(cfg.Scanner.ExcludedPatterns) == 0 {
+	cfg.Scanner.IncludedPaths = raw.Scanner.IncludedPaths
+	if cfg.Scanner.IncludedPaths == nil {
+		cfg.Scanner.IncludedPaths = defaults.Scanner.IncludedPaths
+	}
+
+	cfg.Scanner.IncludePatterns = raw.Scanner.IncludePatterns
+	if cfg.Scanner.IncludePatterns == nil {
+		cfg.Scanner.IncludePatterns = defaults.Scanner.IncludePatterns
+	}
+
+	cfg.Scanner.ImportantFiles = raw.Scanner.ImportantFiles
+	if cfg.Scanner.ImportantFiles == nil {
+		cfg.Scanner.ImportantFiles = defaults.Scanner.ImportantFiles
+	}
+
+	cfg.Scanner.ShowFullStructure = raw.Scanner.ShowFullStructure
+
+	// Output конфигурация
+	cfg.Output.Format = raw.Output.Format
+	if cfg.Output.Format == "" {
+		cfg.Output.Format = defaults.Output.Format
+	}
+
+	cfg.Output.Filename = raw.Output.Filename
+	if cfg.Output.Filename == "" {
+		cfg.Output.Filename = defaults.Output.Filename
+	}
+
+	if raw.Output.AppendTimestamp != nil {
+		cfg.Output.AppendTimestamp = *raw.Output.AppendTimestamp
+	} else {
+		cfg.Output.AppendTimestamp = defaults.Output.AppendTimestamp
+	}
+
+	return cfg
+}
+
+// applyDefaults применяет дефолтные значения для оставшихся незаполненных полей
+func applyDefaults(cfg *Config) {
+	defaults := DefaultConfig()
+
+	// Убеждаемся, что все slice-поля не nil
+	if cfg.Scanner.ExcludedPatterns == nil {
 		cfg.Scanner.ExcludedPatterns = defaults.Scanner.ExcludedPatterns
+	}
+	if cfg.Scanner.IncludedPaths == nil {
+		cfg.Scanner.IncludedPaths = defaults.Scanner.IncludedPaths
+	}
+	if cfg.Scanner.IncludePatterns == nil {
+		cfg.Scanner.IncludePatterns = defaults.Scanner.IncludePatterns
+	}
+	if cfg.Scanner.ImportantFiles == nil {
+		cfg.Scanner.ImportantFiles = defaults.Scanner.ImportantFiles
+	}
+
+	// Устанавливаем режим документации по умолчанию, если не задан
+	if cfg.Scanner.DocumentationMode == "" {
+		cfg.Scanner.DocumentationMode = "full"
 	}
 }
 

@@ -1,7 +1,7 @@
 package markdown
 
 import (
-	"fmt"
+	"fmt" // Добавляем импорт fmt
 	"path/filepath"
 	"strings"
 
@@ -17,6 +17,63 @@ func (g *Generator) WriteFileSection(file *model.ProjectFile) {
 		return
 	}
 
+	// Режим заголовков
+	if g.docsMode == "headers" && file.Header != nil {
+		g.writeFileHeader(file)
+		return
+	}
+
+	// Полный режим
+	g.writeFullContent(file)
+}
+
+func (g *Generator) writeFileHeader(file *model.ProjectFile) {
+	header := file.Header
+
+	g.file.WriteString("**File Type:** ")
+	g.file.WriteString(strings.ToUpper(file.Lang))
+	g.file.WriteString("\n\n")
+
+	g.file.WriteString("**Summary:** ")
+	if header.Summary != "" {
+		g.file.WriteString(header.Summary)
+	} else {
+		g.file.WriteString("No summary available")
+	}
+	g.file.WriteString("\n\n")
+
+	// Показываем информацию только для Go файлов (остальные - заглушки)
+	if file.Lang == "go" {
+		if len(header.ExportedFunctions) > 0 {
+			g.file.WriteString("**Exported Functions:**\n```go\n")
+			for _, fn := range header.ExportedFunctions {
+				g.file.WriteString(fn + "\n")
+			}
+			g.file.WriteString("```\n\n")
+		}
+
+		if len(header.ExportedTypes) > 0 {
+			g.file.WriteString("**Exported Types:**\n```go\n")
+			for _, typ := range header.ExportedTypes {
+				g.file.WriteString(typ + "\n")
+			}
+			g.file.WriteString("```\n\n")
+		}
+
+		if len(header.Dependencies) > 0 {
+			g.file.WriteString("**Dependencies:**\n")
+			for _, dep := range header.Dependencies {
+				g.file.WriteString(fmt.Sprintf("- `%s`\n", dep))
+			}
+			g.file.WriteString("\n")
+		}
+	}
+
+	// Исправляем форматирование строки
+	g.file.WriteString(fmt.Sprintf("_To view full file content, use the tag: `[FILE:%s]`_\n\n", file.Path))
+}
+
+func (g *Generator) writeFullContent(file *model.ProjectFile) {
 	// Определяем язык для подсветки синтаксиса
 	lang := file.Lang
 	ext := strings.ToLower(filepath.Ext(file.Path))

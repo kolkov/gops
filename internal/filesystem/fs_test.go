@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -286,6 +285,7 @@ func TestScanProject(t *testing.T) {
 		ImportantFiles:       []string{"important.config"},
 		IncludeTests:         false,
 		IncludeConfigs:       false,
+		IncludeDocs:          true, // Включаем документацию
 		OutputFilename:       "output.md",
 		OutputConfigFilename: "project_docs.md",
 		MaxFileSize:          1024,
@@ -293,12 +293,13 @@ func TestScanProject(t *testing.T) {
 
 	log := logger.New(logger.InfoLevel)
 	processed := make(map[string]bool)
-	var mu sync.Mutex
+	processedPaths := []string{}
 
 	processFile := func(file *model.ProjectFile) {
-		mu.Lock()
-		defer mu.Unlock()
-		processed[file.Path] = !file.Skipped // Сохраняем только не пропущенные файлы
+		if !file.Skipped {
+			processed[file.Path] = true
+			processedPaths = append(processedPaths, file.Path)
+		}
 	}
 
 	t.Run("FullScan", func(t *testing.T) {
@@ -309,7 +310,7 @@ func TestScanProject(t *testing.T) {
 		assert.True(t, processed[filepath.Join("src", "main.js")])
 		assert.True(t, processed[filepath.Join("src", "components", "button.js")])
 		assert.True(t, processed[filepath.Join("src", "utils", "helpers.js")])
-		assert.True(t, processed["README.md"])
+		assert.True(t, processed["README.md"]) // Теперь должен быть включен
 		assert.True(t, processed["important.config"])
 
 		// Проверяем, что исключенные файлы не были обработаны
@@ -424,4 +425,30 @@ func TestProcessSingleFile(t *testing.T) {
 		file := processSingleFile(filepath.Join(tmpDir, "nonexistent.txt"), tmpDir, cfg)
 		assert.True(t, file.Skipped)
 	})
+}
+
+func TestShouldSkipFile_ExcludesGopsConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected bool
+	}{
+		{"gops_config.yaml", true},
+		{"gops_config_old.yaml", true},
+		{"custom_gops_config.yml", true},
+		{"main.go", false},
+		{"README.md", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ShouldSkipFile(
+				tt.name,
+				"project_docs.md", // outputConfigFilename
+				"output.md",       // outputFilename
+				[]string{},        // excludedPatterns
+				[]string{},        // importantFiles
+			)
+			assert.Equal(t, tt.expected, result, "File %s should be skipped=%v", tt.name, tt.expected)
+		})
+	}
 }

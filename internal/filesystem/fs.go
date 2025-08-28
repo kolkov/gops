@@ -55,7 +55,8 @@ func ReadFile(path string, maxSize int64) ([]byte, error) {
 }
 
 func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedPatterns, importantFiles []string) bool {
-	if strings.HasPrefix(name, "gops_config") {
+	// Всегда пропускать конфигурационные файлы gops
+	if strings.HasPrefix(name, "gops_config") || strings.Contains(strings.ToLower(name), "gops_config") {
 		return true
 	}
 
@@ -63,20 +64,24 @@ func ShouldSkipFile(name, outputConfigFilename, outputFilename string, excludedP
 		return true
 	}
 
-	if name == filepath.Base(outputFilename) {
+	// Проверяем outputFilename только если он не пустой
+	if outputFilename != "" && name == filepath.Base(outputFilename) {
 		return true
 	}
 
-	baseName := strings.TrimSuffix(outputConfigFilename, filepath.Ext(outputConfigFilename))
-	docPattern := baseName + "*.md"
-	if matched, _ := filepath.Match(docPattern, name); matched {
-		return true
+	// Проверяем шаблон документации только если outputConfigFilename не пустой
+	if outputConfigFilename != "" {
+		baseName := strings.TrimSuffix(filepath.Base(outputConfigFilename), filepath.Ext(outputConfigFilename))
+		if baseName != "" {
+			docPattern := baseName + "*.md"
+			if matched, _ := filepath.Match(docPattern, name); matched {
+				return true
+			}
+		}
 	}
 
 	systemExcludes := []string{
-		"package-lock.json",
-		"yarn.lock",
-		"pnpm-lock.yaml",
+		"package-lock.json", "yarn.lock", "pnpm-lock.yaml",
 	}
 	for _, excl := range systemExcludes {
 		if name == excl {
@@ -144,7 +149,9 @@ func shouldSkipByType(path string, cfg *model.ScanConfig) bool {
 		return true
 	case !cfg.IncludeConfigs && (ext == ".json" || ext == ".yaml" || ext == ".yml" || strings.Contains(fileName, "config")):
 		return true
-	case !cfg.IncludeTests && (strings.Contains(fileName, ".spec.") || strings.Contains(fileName, ".test.") || strings.Contains(filepath.Dir(path), "test")):
+	case !cfg.IncludeTests && (strings.Contains(fileName, ".spec.") || strings.Contains(fileName, ".test.")):
+		return true
+	case !cfg.IncludeDocs && (ext == ".md" || ext == ".markdown"):
 		return true
 	default:
 		return false
@@ -229,35 +236,32 @@ func processSingleFile(path, root string, cfg *model.ScanConfig) *model.ProjectF
 		Lang: model.GetFileLanguage(path),
 	}
 
-	for _, important := range cfg.ImportantFiles {
-		if strings.HasSuffix(path, important) {
-			content, err := ReadFile(path, cfg.MaxFileSize)
-			if err != nil {
-				file.Skipped = true
-			} else {
-				file.Content = content
-			}
-			return file
-		}
+	// Добавим отладочную информацию
+	fmt.Printf("Processing file: %s\n", relPath)
+
+	// Применяем все проверки исключений
+	if ShouldSkipFile(filepath.Base(path), cfg.OutputConfigFilename, cfg.OutputFilename, cfg.ExcludedPatterns, cfg.ImportantFiles) {
+		fmt.Printf("File %s skipped by ShouldSkipFile\n", relPath)
+		return nil
 	}
 
-	if info, err := os.Stat(path); err == nil && info.Size() > cfg.MaxFileSize {
-		file.Skipped = true
-		return file
-	}
-
+	// Проверяем тип файла
 	if shouldSkipByType(path, cfg) {
+		fmt.Printf("File %s skipped by shouldSkipByType\n", relPath)
 		file.Skipped = true
 		return file
 	}
 
+	// Читаем содержимое файла
 	content, err := ReadFile(path, cfg.MaxFileSize)
 	if err != nil {
+		fmt.Printf("File %s skipped due to read error: %v\n", relPath, err)
 		file.Skipped = true
 		return file
 	}
 
 	file.Content = content
+	fmt.Printf("File %s included\n", relPath)
 	return file
 }
 

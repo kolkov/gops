@@ -1,6 +1,6 @@
 scanner:
     max_file_size: 2097152
-    include_tests: true
+    include_tests: false
     include_configs: true
     include_markup: false
     include_styles: false

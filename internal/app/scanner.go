@@ -3,17 +3,16 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/kolkov/gops/internal/docgen/markdown"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/kolkov/gops/internal/config"
 	"github.com/kolkov/gops/internal/docgen"
+	"github.com/kolkov/gops/internal/filesystem"
 	"github.com/kolkov/gops/internal/model"
 	"github.com/kolkov/gops/internal/scanner"
-	"github.com/kolkov/gops/internal/scanner/golang"
-	"github.com/kolkov/gops/internal/scanner/js"
-	"github.com/kolkov/gops/internal/scanner/nx"
 	"github.com/kolkov/gops/pkg/logger"
 )
 
@@ -25,7 +24,6 @@ type ProjectScanner struct {
 }
 
 func NewProjectScanner(rootDir, outputFile string, cfg *config.Config, logger *logger.Logger) *ProjectScanner {
-	// Явное исключение gops_config.yaml
 	if strings.EqualFold(filepath.Base(outputFile), "gops_config.yaml") {
 		logger.Fatal("Cannot use gops_config.yaml as output file", nil)
 	}
@@ -49,6 +47,17 @@ func (s *ProjectScanner) Run(ctx context.Context) error {
 
 	scanCfg := convertConfig(s.cfg.Scanner, s.outputFile, base)
 
+	// Единое сканирование для структуры и содержимого
+	treeBuilder := filesystem.NewTreeBuilder(s.rootDir, &scanCfg)
+	projectStructure, err := treeBuilder.BuildStructure()
+	if err != nil {
+		s.logger.Error("Failed to build project structure", err)
+		return err
+	}
+
+	// Генерируем визуальное дерево
+	treeVisualization := treeBuilder.RenderTreeFromStructure(projectStructure.Root)
+
 	detector := scanner.NewProjectDetector(s.rootDir, s.logger)
 	projectType, err := detector.Detect()
 	if err != nil {
@@ -57,15 +66,8 @@ func (s *ProjectScanner) Run(ctx context.Context) error {
 
 	s.logger.Debug("Detected project type", "type", projectType)
 
-	var projectScanner scanner.ProjectScanner
-	switch projectType {
-	case scanner.NxMonorepo:
-		projectScanner = nx.NewScanner(s.rootDir, s.outputFile, &scanCfg, s.logger)
-	case scanner.Go:
-		projectScanner = golang.NewScanner(s.rootDir, s.outputFile, &scanCfg, s.logger)
-	default:
-		projectScanner = js.NewScanner(s.rootDir, s.outputFile, &scanCfg, s.logger)
-	}
+	// Удаляем неиспользуемую переменную projectScanner
+	// var projectScanner scanner.ProjectScanner
 
 	var docGenerator docgen.Generator
 	switch s.cfg.Output.Format {
@@ -76,8 +78,27 @@ func (s *ProjectScanner) Run(ctx context.Context) error {
 	}
 	defer docGenerator.Close()
 
-	if err := projectScanner.Scan(ctx, docGenerator); err != nil {
-		return fmt.Errorf("scan failed: %w", err)
+	// Устанавливаем режим документации
+	if markdownGen, ok := docGenerator.(*markdown.Generator); ok {
+		markdownGen.SetDocumentationMode(s.cfg.Scanner.DocumentationMode)
+	}
+
+	meta := &model.ProjectMeta{
+		Name:    filepath.Base(s.rootDir),
+		Type:    projectType,
+		RootDir: s.rootDir,
+	}
+
+	docGenerator.WriteHeader(meta)
+	docGenerator.WriteTree(treeVisualization)
+
+	// Обрабатываем файлы (уже собранные в projectStructure)
+	docGenerator.WriteModulesHeader()
+	for _, file := range projectStructure.Files {
+		if s.cfg.Scanner.DocumentationMode == "headers" {
+			file.Header = filesystem.ExtractFileHeader(file.Path, file.Content, file.Lang)
+		}
+		docGenerator.WriteFileSection(file)
 	}
 
 	return nil
@@ -138,6 +159,7 @@ func convertConfig(cfg config.ScannerConfig, outputFile, outConfigFilename strin
 		ParallelWorkers:      cfg.ParallelWorkers,
 		OutputFilename:       outputFile,
 		OutputConfigFilename: outConfigFilename,
+		DocumentationMode:    cfg.DocumentationMode, // Добавляем это поле
 	}
 }
 

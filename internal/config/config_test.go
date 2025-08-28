@@ -41,6 +41,7 @@ scanner:
   include_configs: true
   include_markup: false
   include_styles: true
+  include_docs: true
   excluded_patterns: 
     - "*.tmp"
     - "logs/*"
@@ -62,6 +63,7 @@ output:
 		assert.True(t, cfg.Scanner.IncludeConfigs)
 		assert.False(t, cfg.Scanner.IncludeMarkup)
 		assert.True(t, cfg.Scanner.IncludeStyles)
+		assert.True(t, cfg.Scanner.IncludeDocs)
 		assert.Contains(t, cfg.Scanner.ExcludedPatterns, "*.tmp")
 		assert.Equal(t, 8, cfg.Scanner.ParallelWorkers)
 		assert.Equal(t, 10*time.Minute, time.Duration(cfg.Scanner.Timeout))
@@ -70,22 +72,35 @@ output:
 		assert.True(t, cfg.Output.AppendTimestamp)
 	})
 
-	t.Run("InvalidDuration", func(t *testing.T) {
+	t.Run("PartialConfigWithDefaults", func(t *testing.T) {
 		configContent := []byte(`
 scanner:
-  timeout: invalid
+  include_tests: false
+  include_configs: false
+output:
+  format: html
 `)
-		configPath := filepath.Join(tmpDir, "config_invalid.yaml")
+		configPath := filepath.Join(tmpDir, "config_partial.yaml")
 		require.NoError(t, os.WriteFile(configPath, configContent, 0644))
 
-		_, err := Load(configPath)
-		assert.Error(t, err)
-	})
-}
+		cfg, err := Load(configPath)
+		require.NoError(t, err)
 
-func TestIncludeDocsDefaultFalse(t *testing.T) {
-	cfg := ScannerConfig{}
-	assert.False(t, cfg.IncludeDocs)
+		// Проверяем, что явно установленные значения сохраняются
+		assert.False(t, cfg.Scanner.IncludeTests)
+		assert.False(t, cfg.Scanner.IncludeConfigs)
+		assert.Equal(t, "html", cfg.Output.Format)
+
+		// Проверяем, что применяются значения по умолчанию для не указанных полей
+		assert.Equal(t, int64(2*1024*1024), cfg.Scanner.MaxFileSize)
+		assert.Equal(t, 4, cfg.Scanner.ParallelWorkers)
+		assert.Equal(t, 5*time.Minute, time.Duration(cfg.Scanner.Timeout))
+		assert.True(t, cfg.Scanner.IncludeMarkup)
+		assert.True(t, cfg.Scanner.IncludeStyles)
+		assert.False(t, cfg.Scanner.IncludeDocs)
+		assert.Equal(t, "project_docs.md", cfg.Output.Filename)
+		assert.True(t, cfg.Output.AppendTimestamp)
+	})
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -186,42 +201,6 @@ func TestCreateSampleConfig(t *testing.T) {
 	cfg, err := Load(configPath)
 	require.NoError(t, err)
 	assert.NotNil(t, cfg)
-}
-
-func TestApplyDefaults(t *testing.T) {
-	t.Run("EmptyConfig", func(t *testing.T) {
-		cfg := &Config{}
-		applyDefaults(cfg)
-
-		assert.Equal(t, int64(2*1024*1024), cfg.Scanner.MaxFileSize)
-		assert.Equal(t, 4, cfg.Scanner.ParallelWorkers)
-		assert.Equal(t, Duration(5*time.Minute), cfg.Scanner.Timeout)
-		assert.Equal(t, "markdown", cfg.Output.Format)
-		assert.Len(t, cfg.Scanner.ExcludedPatterns, 6)
-	})
-
-	t.Run("PartialConfig", func(t *testing.T) {
-		cfg := &Config{
-			Scanner: ScannerConfig{
-				MaxFileSize:  1024,
-				IncludeTests: true,
-			},
-			Output: OutputConfig{
-				Format: "html",
-			},
-		}
-		applyDefaults(cfg)
-
-		// Should keep existing values
-		assert.Equal(t, int64(1024), cfg.Scanner.MaxFileSize)
-		assert.True(t, cfg.Scanner.IncludeTests)
-		assert.Equal(t, "html", cfg.Output.Format)
-
-		// Should apply defaults for missing values
-		assert.Equal(t, 4, cfg.Scanner.ParallelWorkers)
-		assert.Equal(t, Duration(5*time.Minute), cfg.Scanner.Timeout)
-		assert.Len(t, cfg.Scanner.ExcludedPatterns, 6)
-	})
 }
 
 func TestDurationMarshalYAML(t *testing.T) {

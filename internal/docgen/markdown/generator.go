@@ -1,4 +1,3 @@
-// markdown/generator.go
 package markdown
 
 import (
@@ -16,6 +15,7 @@ type Generator struct {
 	file       *os.File
 	logger     *logger.Logger
 	outputFile string
+	docsMode   string
 }
 
 func NewGenerator(outputFile string, logger *logger.Logger) *Generator {
@@ -45,4 +45,9 @@ func (g *Generator) WriteTree(structure string) {
 	g.file.WriteString("```\n")
 	g.file.WriteString(structure)
 	g.file.WriteString("\n```\n\n")
+}
+
+// SetDocumentationMode устанавливает режим документации
+func (g *Generator) SetDocumentationMode(mode string) {
+	g.docsMode = mode
 }
