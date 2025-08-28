@@ -371,13 +371,12 @@ func (p *Plugin) extractClasses(content string) []model.ClassInfo {
 	matches = p.interfaceRegex.FindAllStringSubmatch(content, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			interface := model.ClassInfo{
-				Name:     match[1],
-				Line:     p.getLineNumber(content, match[0]),
-				IsPublic: p.isExported(content, match[1]),
-				Type:     "interface",
+			interfaceInfo := model.ClassInfo{
+				Name:      match[1],
+				StartLine: p.getLineNumber(content, match[0]),
+				IsPublic:  p.isExported(content, match[1]),
 			}
-			classes = append(classes, interface)
+			classes = append(classes, interfaceInfo)
 		}
 	}
 

@@ -122,7 +122,7 @@ func (p *Plugin) GetMetadata() *plugin.PluginMetadata {
 		License:      "MIT",
 		Homepage:     "https://github.com/kolkov/gops",
 		Tags:         []string{"project", "nx", "monorepo", "workspace", "angular", "typescript"},
-		Capabilities: []string{"detect", "analyze", "structure", "workspace"},
+		Capabilities: []plugin.PluginCapability{plugin.CapabilityProjectDet, plugin.CapabilityDependencies},
 	}
 }
 

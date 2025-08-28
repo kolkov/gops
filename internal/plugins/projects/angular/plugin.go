@@ -4,7 +4,6 @@ package angular
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,7 +111,7 @@ func (p *Plugin) GetMetadata() *plugin.PluginMetadata {
 		License:      "MIT",
 		Homepage:     "https://github.com/kolkov/gops",
 		Tags:         []string{"project", "angular", "typescript", "frontend"},
-		Capabilities: []string{"detect", "analyze", "structure"},
+		Capabilities: []plugin.PluginCapability{plugin.CapabilityProjectDet, plugin.CapabilityDependencies},
 	}
 }
 

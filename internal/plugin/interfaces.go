@@ -6,6 +6,37 @@ import (
 	"github.com/kolkov/gops/internal/model"
 )
 
+// PluginType определяет тип плагина
+type PluginType int
+
+const (
+	PluginTypeLanguage PluginType = iota
+	PluginTypeProject
+	PluginTypeFilter
+	PluginTypeGenerator
+)
+
+// PluginStatus определяет статус плагина
+type PluginStatus int
+
+const (
+	StatusInactive PluginStatus = iota
+	StatusActive
+	StatusError
+	StatusDeprecated
+)
+
+// PluginCapability определяет возможности плагина
+type PluginCapability string
+
+const (
+	CapabilityASTParsing   PluginCapability = "ast_parsing"
+	CapabilitySyntaxCheck  PluginCapability = "syntax_check"
+	CapabilityComplexity   PluginCapability = "complexity"
+	CapabilityProjectDet   PluginCapability = "project_detection"
+	CapabilityDependencies PluginCapability = "dependencies"
+)
+
 // Plugin - базовый интерфейс для всех плагинов
 type Plugin interface {
 	// Name возвращает имя плагина
@@ -42,6 +73,12 @@ type LanguagePlugin interface {
 
 	// GetComplexity вычисляет метрики сложности кода
 	GetComplexity(content []byte) (*model.ComplexityMetrics, error)
+	
+	// ExtractMetadata извлекает метаданные файла
+	ExtractMetadata(ctx context.Context, file *model.ProjectFile) (*model.FileMetadata, error)
+	
+	// GetLanguage определяет язык файла
+	GetLanguage(filepath string, content []byte) string
 }
 
 // ProjectTypePlugin - плагин для определения и анализа типа проекта
@@ -155,14 +192,19 @@ type ExtensionPlugin interface {
 
 // PluginMetadata - метаданные плагина
 type PluginMetadata struct {
-	Name         string
-	Version      string
-	Author       string
-	Description  string
-	License      string
-	Homepage     string
-	Dependencies []string
-	Tags         []string
+	Name         string             `json:"name"`
+	Version      string             `json:"version"`
+	Author       string             `json:"author"`
+	Description  string             `json:"description"`
+	License      string             `json:"license"`
+	Homepage     string             `json:"homepage"`
+	Type         PluginType         `json:"type"`
+	Status       PluginStatus       `json:"status"`
+	Priority     int                `json:"priority"`
+	Capabilities []PluginCapability `json:"capabilities"`
+	Dependencies []string           `json:"dependencies"`
+	Tags         []string           `json:"tags"`
+	ConfigSchema map[string]string  `json:"config_schema"`
 }
 
 // PluginCapabilities - возможности плагина
@@ -212,3 +254,4 @@ type CompositePlugin interface {
 	// AsProcessorPlugin возвращает плагин как ProcessorPlugin, если поддерживается
 	AsProcessorPlugin() (ProcessorPlugin, bool)
 }
+

@@ -89,7 +89,9 @@ type FileMetadata struct {
 type ProjectMetadata struct {
 	// Основная информация
 	RootPath    string `json:"root_path"`
+	RootDir     string `json:"root_dir"`     // Для совместимости
 	Name        string `json:"name"`
+	ProjectName string `json:"project_name"` // Для совместимости
 	Description string `json:"description,omitempty"`
 	Type        string `json:"type,omitempty"`
 	Version     string `json:"version,omitempty"`
@@ -147,6 +149,7 @@ type Dependency struct {
 // ProjectInfo - детальная информация о проекте после анализа
 type ProjectInfo struct {
 	Type      string   `json:"type"`
+	Version   string   `json:"version,omitempty"` // Для совместимости с плагинами
 	Framework string   `json:"framework,omitempty"`
 	Language  string   `json:"language"`
 	Languages []string `json:"languages"` // Для многоязычных проектов
@@ -211,9 +214,99 @@ type LoadingRule struct {
 	Pattern     string      `json:"pattern,omitempty"`
 	Patterns    []string    `json:"patterns,omitempty"`
 	Mode        ContentMode `json:"mode"`
+	ContentMode ContentMode `json:"content_mode"` // Дублируем для совместимости
 	MaxSize     int64       `json:"max_size,omitempty"`
 	Condition   string      `json:"condition,omitempty"` // Выражение для оценки
 }
+
+// Matches проверяет, соответствует ли файл правилу
+func (lr *LoadingRule) Matches(filepath string) bool {
+	// Простая реализация - можно улучшить
+	return true
+}
+
+
+// ParsedFile представляет распарсенный файл
+type ParsedFile struct {
+	Path         string          `json:"path"`
+	Language     string          `json:"language"`
+	Functions    []FunctionInfo  `json:"functions"`
+	Classes      []ClassInfo     `json:"classes"`
+	Imports      []string        `json:"imports"`
+	Exports      []string        `json:"exports"`
+	Comments     []CommentInfo   `json:"comments"`
+	TODOs        []TODOInfo      `json:"todos"`
+	Dependencies []string        `json:"dependencies"`
+	Complexity   int             `json:"complexity"`
+	LineCount    int             `json:"line_count"`
+}
+
+// ValidationError представляет ошибку валидации
+type ValidationError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+	Value   string `json:"value"`
+}
+
+// FunctionInfo содержит информацию о функции
+type FunctionInfo struct {
+	Name       string   `json:"name"`
+	Signature  string   `json:"signature"`
+	StartLine  int      `json:"start_line"`
+	EndLine    int      `json:"end_line"`
+	Parameters []string `json:"parameters"`
+	ReturnType string   `json:"return_type"`
+	IsPublic   bool     `json:"is_public"`
+	Comment    string   `json:"comment"`
+	Complexity int      `json:"complexity"`
+}
+
+// ClassInfo содержит информацию о классе/структуре  
+type ClassInfo struct {
+	Name      string         `json:"name"`
+	StartLine int            `json:"start_line"`
+	EndLine   int            `json:"end_line"`
+	Methods   []FunctionInfo `json:"methods"`
+	Fields    []FieldInfo    `json:"fields"`
+	IsPublic  bool           `json:"is_public"`
+	Comment   string         `json:"comment"`
+}
+
+// FieldInfo содержит информацию о поле
+type FieldInfo struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	IsPublic bool   `json:"is_public"`
+	Comment  string `json:"comment"`
+}
+
+// CommentInfo содержит информацию о комментарии
+type CommentInfo struct {
+	Text      string `json:"text"`
+	StartLine int    `json:"start_line"`
+	EndLine   int    `json:"end_line"`
+	Type      string `json:"type"` // single, multi, doc
+}
+
+// TODOInfo содержит информацию о TODO/FIXME
+type TODOInfo struct {
+	Text     string `json:"text"`
+	Line     int    `json:"line"`
+	Type     string `json:"type"` // TODO, FIXME, NOTE, etc.
+	Priority string `json:"priority"`
+}
+
+// FileInfo содержит общую информацию о файле
+type FileInfo struct {
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
+	ModTime   string `json:"mod_time"`
+	Language  string `json:"language"`
+	Type      string `json:"type"`
+	Encoding  string `json:"encoding"`
+	LineCount int    `json:"line_count"`
+}
+
 
 // ExclusionRule - правило исключения файлов
 type ExclusionRule struct {
