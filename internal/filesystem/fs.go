@@ -260,7 +260,7 @@ func processSingleFile(path, root string, cfg *model.ScanConfig) *model.ProjectF
 		return file
 	}
 
-	file.Content = content
+	file.Content = string(content)
 	fmt.Printf("File %s included\n", relPath)
 	return file
 }

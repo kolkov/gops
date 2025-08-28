@@ -17,27 +17,7 @@ var (
 	ErrFileTooLarge = errors.New("file size exceeds maximum limit")
 )
 
-type ProjectMeta struct {
-	Name    string
-	Type    string
-	RootDir string
-}
-
-type ProjectFile struct {
-	Path    string
-	Content []byte
-	Lang    string
-	Skipped bool
-	Header  *FileHeader
-}
-
-type FileHeader struct {
-	ExportedFunctions []string `yaml:"exported_functions"`
-	ExportedTypes     []string `yaml:"exported_types"`
-	ExportedConstants []string `yaml:"exported_constants"`
-	Dependencies      []string `yaml:"dependencies"`
-	Summary           string   `yaml:"summary"`
-}
+// Старые типы перенесены в file_models.go - эти удалены для избежания конфликтов
 
 type NxProject struct {
 	Name      string
@@ -60,93 +40,9 @@ type FileNode struct {
 	FileInfo *ProjectFile
 }
 
-type ScanConfig struct {
-	// Основные настройки
-	IncludeTests         bool     `yaml:"include_tests"`
-	IncludeConfigs       bool     `yaml:"include_configs"`
-	IncludeMarkup        bool     `yaml:"include_markup"`
-	IncludeStyles        bool     `yaml:"include_styles"`
-	IncludeDocs          bool     `yaml:"include_docs"` // Добавляем это поле
-	ExcludedPatterns     []string `yaml:"excluded_patterns"`
-	MaxFileSize          int64    `yaml:"max_file_size"`
-	ParallelWorkers      int      `yaml:"parallel_workers"`
-	Timeout              Duration `yaml:"timeout"` // Добавляем это поле
-	OutputFilename       string   `yaml:"output_filename"`
-	OutputConfigFilename string   `yaml:"output_config_filename"`
-	ImportantFiles       []string `yaml:"important_files"`
-	ShowFullStructure    bool     `yaml:"show_full_structure"`
-	DocumentationMode    string   `yaml:"documentation_mode"`
+// ScanConfig перенесен в file_models.go - удален для избежания конфликтов
 
-	// Настройки выбора файлов
-	SelectionMode   string   `yaml:"selection_mode"`
-	IncludedPaths   []string `yaml:"included_paths"`
-	IncludePatterns []string `yaml:"include_patterns"`
-}
-
-// IsFileIncluded проверяет, должен ли файл быть включен в документацию
-func (sc *ScanConfig) IsFileIncluded(relPath string) bool {
-	// Если режим "all" или не задан - включаем все файлы
-	if sc.SelectionMode == "" || sc.SelectionMode == "all" {
-		return true
-	}
-
-	// Для режима "list" проверяем точное совпадение путей
-	if sc.SelectionMode == "list" && len(sc.IncludedPaths) > 0 {
-		normalizedPath := filepath.ToSlash(relPath)
-		for _, includedPath := range sc.IncludedPaths {
-			normalizedIncluded := filepath.ToSlash(includedPath)
-			if normalizedPath == normalizedIncluded {
-				return true
-			}
-			// Проверяем, если это файл внутри выбранной папки
-			if strings.HasPrefix(normalizedPath, normalizedIncluded+"/") {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Для режима "patterns" проверяем соответствие паттернам
-	if sc.SelectionMode == "patterns" && len(sc.IncludePatterns) > 0 {
-		normalizedPath := filepath.ToSlash(relPath)
-		for _, pattern := range sc.IncludePatterns {
-			pattern = filepath.ToSlash(pattern)
-
-			// Если паттерн содержит **, используем специальную логику
-			if strings.Contains(pattern, "**") {
-				if matchDoublestar(pattern, normalizedPath) {
-					return true
-				}
-			} else {
-				// Для простых паттернов нужна специальная обработка
-				// чтобы правильно учитывать структуру директорий
-				if matchSimplePattern(pattern, normalizedPath) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
-// HasFileSelection проверяет, активен ли режим выбора файлов
-func (sc *ScanConfig) HasFileSelection() bool {
-	return sc.SelectionMode == "list" || sc.SelectionMode == "patterns" || sc.SelectionMode == "interactive"
-}
-
-// GetSelectedFilesCount возвращает количество выбранных файлов
-func (sc *ScanConfig) GetSelectedFilesCount() int {
-	switch sc.SelectionMode {
-	case "list":
-		return len(sc.IncludedPaths)
-	case "patterns":
-		return len(sc.IncludePatterns)
-	default:
-		return 0
-	}
-}
+// Методы ScanConfig перенесены в file_models.go - удалены для избежания конфликтов
 
 func GetFileLanguage(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))

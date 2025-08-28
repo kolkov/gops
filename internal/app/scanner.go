@@ -96,7 +96,7 @@ func (s *ProjectScanner) Run(ctx context.Context) error {
 	docGenerator.WriteModulesHeader()
 	for _, file := range projectStructure.Files {
 		if s.cfg.Scanner.DocumentationMode == "headers" {
-			file.Header = filesystem.ExtractFileHeader(file.Path, file.Content, file.Lang)
+			file.Header = filesystem.ExtractFileHeader(file.Path, []byte(file.Content), file.Lang)
 		}
 		docGenerator.WriteFileSection(file)
 	}

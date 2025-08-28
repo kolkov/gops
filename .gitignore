@@ -1,2 +1,5 @@
 .idea
 project_docs*
+gops_config*.yaml
+.gops
+*.exe

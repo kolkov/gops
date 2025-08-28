@@ -85,7 +85,7 @@ func (g *Generator) writeFullContent(file *model.ProjectFile) {
 	}
 
 	g.file.WriteString(fmt.Sprintf("```%s\n", lang))
-	g.file.Write(file.Content)
+	g.file.WriteString(file.Content)
 	if len(file.Content) > 0 && file.Content[len(file.Content)-1] != '\n' {
 		g.file.WriteString("\n")
 	}

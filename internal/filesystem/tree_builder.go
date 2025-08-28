@@ -147,7 +147,7 @@ func (tb *TreeBuilder) processFile(path, rootDir string) *model.ProjectFile {
 		return file
 	}
 
-	file.Content = content
+	file.Content = string(content)
 	return file
 }
 
